@@ -7,7 +7,8 @@ export const mockUsers = [
         role: 'admin',
         status: 'active',
         groups: ['Financeiro', 'RH', 'Saúde'],
-        avatar: null
+        avatar: null,
+        rlsMapping: {}
     },
     {
         id: 2,
@@ -17,7 +18,8 @@ export const mockUsers = [
         role: 'user',
         status: 'active',
         groups: ['Financeiro', 'RH'],
-        avatar: null
+        avatar: null,
+        rlsMapping: {}
     }
 ]
 

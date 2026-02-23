@@ -15,7 +15,7 @@ export default function Home() {
                 <div className="container home-hero-content">
                     <h1 className="animate-fade-in-up">
                         Olá, este é o seu{' '}
-                        <span>Portal BI!</span>
+                        <span>Boon 360º!</span>
                     </h1>
                     <p className="animate-fade-in-up animate-delay-1">
                         Dashboards Power BI organizados por áreas, com acesso controlado.

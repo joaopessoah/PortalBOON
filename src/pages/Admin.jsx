@@ -60,7 +60,8 @@ function AdminDashboards() {
         name: '', description: '', category: categories[0]?.name || '',
         url: '', workspaceId: '', reportId: '', groupId: '',
         order: dashboards.length + 1, active: true,
-        visibility: 'all', groups: [], users: [], pinned: false
+        visibility: 'all', groups: [], users: [], pinned: false,
+        rlsRoles: []
     }
 
     const [form, setForm] = useState(emptyForm)
@@ -79,10 +80,19 @@ function AdminDashboards() {
 
     const handleSave = () => {
         if (!form.name.trim() || !form.url.trim()) return
+        // Converter rlsRolesText para array
+        const saveData = { ...form }
+        if (saveData.rlsRolesText !== undefined) {
+            saveData.rlsRoles = saveData.rlsRolesText
+                .split(',')
+                .map(r => r.trim())
+                .filter(r => r.length > 0)
+            delete saveData.rlsRolesText
+        }
         if (editing) {
-            updateDashboard(editing, form)
+            updateDashboard(editing, saveData)
         } else {
-            addDashboard(form)
+            addDashboard(saveData)
         }
         setShowModal(false)
     }
@@ -222,8 +232,20 @@ function AdminDashboards() {
                                 <input
                                     className="form-input"
                                     value={form.url}
-                                    onChange={e => setForm({ ...form, url: e.target.value })}
-                                    placeholder="https://app.powerbi.com/view?r=..."
+                                    onChange={e => {
+                                        const newUrl = e.target.value
+                                        const updates = { url: newUrl }
+                                        // Auto-extrair reportId e workspaceId da URL
+                                        try {
+                                            const u = new URL(newUrl)
+                                            const groupMatch = u.pathname.match(/\/groups\/([^/]+)/)
+                                            const reportMatch = u.pathname.match(/\/reports\/([^/]+)/)
+                                            if (groupMatch) updates.workspaceId = groupMatch[1]
+                                            if (reportMatch) updates.reportId = reportMatch[1]
+                                        } catch { /* URL incompleta */ }
+                                        setForm({ ...form, ...updates })
+                                    }}
+                                    placeholder="https://app.powerbi.com/groups/.../reports/..."
                                 />
                             </div>
 
@@ -246,6 +268,21 @@ function AdminDashboards() {
                                         placeholder="Opcional"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Roles RLS (segurança)</label>
+                                <input
+                                    className="form-input"
+                                    value={form.rlsRolesText !== undefined ? form.rlsRolesText : (form.rlsRoles || []).join(', ')}
+                                    onChange={e => {
+                                        setForm({ ...form, rlsRolesText: e.target.value })
+                                    }}
+                                    placeholder="Ex: Grupo Financeiro, Grupo RH (separar por vírgula)"
+                                />
+                                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', marginTop: 4, display: 'block' }}>
+                                    Informe os nomes dos roles de segurança (RLS) do Power BI. Deixe vazio se não usar RLS.
+                                </span>
                             </div>
 
                             <div className="modal-row">
@@ -329,13 +366,16 @@ function AdminDashboards() {
 
 /* ======================== USERS TAB ======================== */
 function AdminUsers() {
-    const { users, addUser, updateUser, deleteUser, groups } = useData()
+    const { users, addUser, updateUser, deleteUser, groups, dashboards } = useData()
     const [showModal, setShowModal] = useState(false)
     const [editing, setEditing] = useState(null)
 
+    // Dashboards que têm RLS configurado
+    const rlsDashboards = dashboards.filter(d => d.rlsRoles && d.rlsRoles.length > 0)
+
     const emptyForm = {
         name: '', email: '', password: '123', role: 'user',
-        status: 'active', groups: []
+        status: 'active', groups: [], rlsMapping: {}
     }
 
     const [form, setForm] = useState(emptyForm)
@@ -520,6 +560,49 @@ function AdminUsers() {
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Mapeamento RLS por Dashboard */}
+                            {rlsDashboards.length > 0 && (
+                                <div className="form-group">
+                                    <label className="form-label">Roles RLS por Dashboard</label>
+                                    <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', marginBottom: 8, display: 'block' }}>
+                                        Atribua uma role de segurança (RLS) para cada dashboard que este usuário terá acesso.
+                                    </span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                                        {rlsDashboards.map(d => (
+                                            <div key={d.id} style={{
+                                                display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                                                padding: 'var(--space-3) var(--space-4)',
+                                                background: 'var(--color-gray-50)', borderRadius: 'var(--radius-lg)',
+                                                border: '1px solid var(--color-gray-200)'
+                                            }}>
+                                                <span style={{ flex: 1, fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-gray-700)' }}>
+                                                    {d.name}
+                                                </span>
+                                                <select
+                                                    className="form-select"
+                                                    style={{ width: 'auto', minWidth: 160, fontSize: 'var(--font-size-sm)' }}
+                                                    value={(form.rlsMapping || {})[d.id] || ''}
+                                                    onChange={e => {
+                                                        const mapping = { ...(form.rlsMapping || {}) }
+                                                        if (e.target.value) {
+                                                            mapping[d.id] = e.target.value
+                                                        } else {
+                                                            delete mapping[d.id]
+                                                        }
+                                                        setForm({ ...form, rlsMapping: mapping })
+                                                    }}
+                                                >
+                                                    <option value="">Sem RLS</option>
+                                                    {d.rlsRoles.map(role => (
+                                                        <option key={role} value={role}>{role}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="modal-footer">

@@ -23,7 +23,7 @@ export default function Header() {
                     <div className="header-logo-icon">
                         <LayoutDashboard size={22} />
                     </div>
-                    Portal BOON
+                    Boon 360º
                 </Link>
 
                 <button className="header-mobile-toggle" onClick={() => setMobileOpen(!mobileOpen)}>

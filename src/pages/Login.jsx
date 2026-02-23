@@ -47,15 +47,15 @@ export default function Login() {
                         <div className="header-logo-icon">
                             <LayoutDashboard size={22} />
                         </div>
-                        Portal BOON
+                        Boon 360º
                     </div>
                 </div>
             </div>
 
             <div className="login-content">
                 <div className="login-card">
-                    <h1>Olá, bem-vindo ao Portal BI! 👋</h1>
-                    <p>Acesse seus dashboards com segurança.</p>
+                    <h1 style={{ textAlign: 'center' }}>Olá, bem-vindo ao Boon 360º!</h1>
+                    <p style={{ textAlign: 'center' }}>Acesse seus dashboards com segurança.</p>
 
                     {error && (
                         <div className="login-error">

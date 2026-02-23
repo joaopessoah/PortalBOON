@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useData } from '../contexts/DataContext'
+import { useAuth } from '../contexts/AuthContext'
 import Header from '../components/Header'
+import PowerBIEmbed from '../components/PowerBIEmbed'
 import {
     ArrowLeft, Maximize2, Minimize2, ChevronRight, Clock,
     BarChart3, AlertTriangle
@@ -11,6 +13,7 @@ export default function DashboardView() {
     const { id } = useParams()
     const navigate = useNavigate()
     const { getDashboard } = useData()
+    const { user } = useAuth()
     const [fullscreen, setFullscreen] = useState(false)
 
     const dashboard = getDashboard(id)
@@ -61,11 +64,6 @@ export default function DashboardView() {
                                         {dashboard.name}
                                     </span>
                                 </div>
-                                <h1 className="dashboard-view-title">{dashboard.name}</h1>
-                                <div className="dashboard-view-meta">
-                                    <Clock size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
-                                    Última atualização: {formatDate(dashboard.lastUpdate)}
-                                </div>
                             </div>
 
                             <div className="dashboard-view-actions">
@@ -99,14 +97,26 @@ export default function DashboardView() {
                         </button>
                     )}
 
-                    {dashboard.url ? (
-                        <iframe
-                            src={dashboard.url}
-                            title={dashboard.name}
-                            allowFullScreen
-                            sandbox="allow-scripts allow-same-origin allow-popups"
-                        />
-                    ) : (
+                    {dashboard.url ? (() => {
+                        // Buscar a role RLS deste usuário para este dashboard
+                        const userRlsRole = user?.rlsMapping?.[dashboard.id]
+                        // Fallback: se é admin ou não tem mapeamento, usa a primeira role do dashboard
+                        const effectiveRoles = userRlsRole
+                            ? [userRlsRole]
+                            : (dashboard.rlsRoles && dashboard.rlsRoles.length > 0
+                                ? [dashboard.rlsRoles[0]]
+                                : undefined)
+                        return (
+                            <PowerBIEmbed
+                                url={dashboard.url}
+                                reportId={dashboard.reportId}
+                                groupId={dashboard.workspaceId}
+                                name={dashboard.name}
+                                rlsRoles={effectiveRoles}
+                                username={user?.email}
+                            />
+                        )
+                    })() : (
                         <div className="dashboard-view-placeholder" style={{ minHeight: 600 }}>
                             <BarChart3 size={80} />
                             <h2>Embed não configurado</h2>

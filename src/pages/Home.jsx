@@ -29,11 +29,13 @@ export default function Home() {
                         Acessar meus dashboards
                     </Link>
 
-                    {/* Mascot placeholder */}
+                    {/* Mascot image */}
                     <div className="home-hero-mascot animate-fade-in-up animate-delay-3">
-                        <div className="home-hero-mascot-placeholder">
-                            <LayoutDashboard size={64} color="rgba(255,255,255,0.3)" />
-                        </div>
+                        <img
+                            src="/logo-boon.gif"
+                            alt="Boon Cuidado"
+                            className="home-hero-mascot-img"
+                        />
                     </div>
                 </div>
             </section>

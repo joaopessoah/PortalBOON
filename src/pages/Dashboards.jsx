@@ -67,8 +67,8 @@ export default function Dashboards() {
             <div className="dashboards-page">
                 <div className="container">
                     <div className="dashboards-header animate-fade-in-up">
-                        <h1>🎯 Meus Dashboards</h1>
-                        <p>Explore seus dashboards Power BI de forma rápida e organizada.</p>
+                        <h1>Meus Dashboards</h1>
+                        <p>Explore seus dashboards de forma rápida e organizada.</p>
                     </div>
 
                     {/* Toolbar */}

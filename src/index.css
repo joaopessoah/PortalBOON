@@ -735,16 +735,14 @@ ol {
   justify-content: center;
 }
 
-.home-hero-mascot-placeholder {
-  width: 200px;
-  height: 200px;
-  background: rgba(255, 255, 255, 0.08);
+.home-hero-mascot-img {
+  max-width: 320px;
+  width: 100%;
+  height: auto;
   border-radius: var(--radius-3xl);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(10px);
-  border: 2px dashed rgba(255, 255, 255, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  object-fit: cover;
+  border: 4px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Benefits */

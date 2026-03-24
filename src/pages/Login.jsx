@@ -22,20 +22,23 @@ export default function Login() {
 
         setLoading(true)
 
-        // Simular um pequeno delay de rede
-        await new Promise(r => setTimeout(r, 600))
+        try {
+            const result = await login(email, password)
 
-        const result = await login(email, password)
-        setLoading(false)
-
-        if (result.success) {
-            if (result.user.role === 'admin') {
-                navigate('/admin')
+            if (result.success) {
+                if (result.user.role === 'admin') {
+                    navigate('/admin')
+                } else {
+                    navigate('/dashboards')
+                }
             } else {
-                navigate('/dashboards')
+                setError(result.error)
             }
-        } else {
-            setError(result.error)
+        } catch (err) {
+            console.error('Login error:', err)
+            setError('Erro inesperado ao fazer login. Tente novamente.')
+        } finally {
+            setLoading(false)
         }
     }
 

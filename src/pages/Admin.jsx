@@ -3,7 +3,8 @@ import { useData } from '../contexts/DataContext'
 import Header from '../components/Header'
 import {
     LayoutDashboard, Users, Settings, Plus, Edit2, Trash2, Eye,
-    X, Save, Search, ToggleLeft, ToggleRight, Upload, Globe, Key
+    X, Save, Search, ToggleLeft, ToggleRight, Upload, Globe, Key,
+    Lock, Mail, RefreshCw
 } from 'lucide-react'
 
 /* ======================== ADMIN PAGE ======================== */
@@ -51,7 +52,7 @@ export default function Admin() {
 
 /* ======================== DASHBOARDS TAB ======================== */
 function AdminDashboards() {
-    const { dashboards, addDashboard, updateDashboard, deleteDashboard, categories, groups } = useData()
+    const { dashboards, addDashboard, updateDashboard, deleteDashboard, categories, groups, users } = useData()
     const [showModal, setShowModal] = useState(false)
     const [editing, setEditing] = useState(null)
     const [search, setSearch] = useState('')
@@ -74,11 +75,18 @@ function AdminDashboards() {
 
     const openEdit = (dash) => {
         setEditing(dash.id)
-        setForm({ ...dash })
+        // Carregar mapeamento RLS dos usuários para este dashboard
+        const rlsMap = {}
+        users.forEach(u => {
+            if (u.rlsMapping && u.rlsMapping[dash.id]) {
+                rlsMap[u.email] = u.rlsMapping[dash.id]
+            }
+        })
+        setForm({ ...dash, userRlsMapping: rlsMap })
         setShowModal(true)
     }
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!form.name.trim() || !form.url.trim()) return
         // Converter rlsRolesText para array
         const saveData = { ...form }
@@ -89,10 +97,39 @@ function AdminDashboards() {
                 .filter(r => r.length > 0)
             delete saveData.rlsRolesText
         }
+        // Extrair mapeamento RLS dos usuários antes de salvar o dashboard
+        const userRlsMapping = saveData.userRlsMapping || {}
+        delete saveData.userRlsMapping
+
         if (editing) {
-            updateDashboard(editing, saveData)
+            await updateDashboard(editing, saveData)
+            // Atualizar rlsMapping de cada usuário que tem acesso
+            const dashId = String(editing)
+            for (const u of users) {
+                const currentMapping = u.rlsMapping || {}
+                const newRole = userRlsMapping[u.email]
+                const hadRole = currentMapping[dashId]
+                if (newRole && newRole !== hadRole) {
+                    await updateUser(u.id, { ...u, rlsMapping: { ...currentMapping, [dashId]: newRole } })
+                } else if (!newRole && hadRole) {
+                    const updated = { ...currentMapping }
+                    delete updated[dashId]
+                    await updateUser(u.id, { ...u, rlsMapping: updated })
+                }
+            }
         } else {
-            addDashboard(saveData)
+            const created = await addDashboard(saveData)
+            // Atualizar rlsMapping dos usuários para o novo dashboard
+            if (created && Object.keys(userRlsMapping).length > 0) {
+                const dashId = String(created.id)
+                for (const u of users) {
+                    const newRole = userRlsMapping[u.email]
+                    if (newRole) {
+                        const currentMapping = u.rlsMapping || {}
+                        await updateUser(u.id, { ...u, rlsMapping: { ...currentMapping, [dashId]: newRole } })
+                    }
+                }
+            }
         }
         setShowModal(false)
     }
@@ -363,6 +400,60 @@ function AdminDashboards() {
                                 </div>
                             )}
 
+                            {form.visibility === 'users' && (
+                                <div className="form-group">
+                                    <label className="form-label">Usuários com acesso</label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                        {users.map(u => {
+                                            const isChecked = form.users?.includes(u.email)
+                                            const currentRlsRoles = form.rlsRolesText !== undefined
+                                                ? form.rlsRolesText.split(',').map(r => r.trim()).filter(r => r.length > 0)
+                                                : (form.rlsRoles || [])
+                                            const hasRls = currentRlsRoles.length > 0
+                                            return (
+                                                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--font-size-sm)' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', flex: 1 }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setForm({ ...form, users: [...(form.users || []), u.email] })
+                                                                } else {
+                                                                    const newMapping = { ...(form.userRlsMapping || {}) }
+                                                                    delete newMapping[u.email]
+                                                                    setForm({ ...form, users: form.users.filter(x => x !== u.email), userRlsMapping: newMapping })
+                                                                }
+                                                            }}
+                                                        />
+                                                        <span>{u.name}</span>
+                                                        <span style={{ color: 'var(--color-gray-400)' }}>({u.email})</span>
+                                                    </label>
+                                                    {isChecked && hasRls && (
+                                                        <select
+                                                            className="form-select"
+                                                            style={{ width: 'auto', minWidth: 160, fontSize: 'var(--font-size-xs)' }}
+                                                            value={(form.userRlsMapping || {})[u.email] || ''}
+                                                            onChange={(e) => {
+                                                                setForm({
+                                                                    ...form,
+                                                                    userRlsMapping: { ...(form.userRlsMapping || {}), [u.email]: e.target.value }
+                                                                })
+                                                            }}
+                                                        >
+                                                            <option value="">Sem RLS</option>
+                                                            {currentRlsRoles.map(role => (
+                                                                <option key={role} value={role}>{role}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             <div style={{ display: 'flex', gap: 'var(--space-8)' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}>
                                     <div
@@ -409,16 +500,67 @@ function AdminUsers() {
     }
 
     const [form, setForm] = useState(emptyForm)
+    const [newPassword, setNewPassword] = useState('')
+    const [passwordMsg, setPasswordMsg] = useState({ text: '', type: '' })
+    const [sendingEmail, setSendingEmail] = useState(false)
+
+    const handleResetPassword = async () => {
+        if (!newPassword.trim() || newPassword.length < 4) {
+            setPasswordMsg({ text: 'A senha deve ter pelo menos 4 caracteres.', type: 'error' })
+            return
+        }
+        try {
+            const res = await fetch(`/api/users/${editing}/reset-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: newPassword })
+            })
+            const data = await res.json()
+            if (data.success) {
+                setPasswordMsg({ text: 'Senha redefinida com sucesso!', type: 'success' })
+                setNewPassword('')
+            } else {
+                setPasswordMsg({ text: data.error || 'Erro ao redefinir senha.', type: 'error' })
+            }
+        } catch {
+            setPasswordMsg({ text: 'Erro de conexão com o servidor.', type: 'error' })
+        }
+    }
+
+    const handleSendPasswordEmail = async () => {
+        setSendingEmail(true)
+        setPasswordMsg({ text: '', type: '' })
+        try {
+            const res = await fetch(`/api/users/${editing}/send-password-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            const data = await res.json()
+            if (data.success) {
+                setPasswordMsg({ text: `Senha temporária enviada para ${form.email}`, type: 'success' })
+            } else {
+                setPasswordMsg({ text: data.error || 'Erro ao enviar e-mail.', type: 'error' })
+            }
+        } catch {
+            setPasswordMsg({ text: 'Erro de conexão com o servidor.', type: 'error' })
+        } finally {
+            setSendingEmail(false)
+        }
+    }
 
     const openCreate = () => {
         setEditing(null)
         setForm(emptyForm)
+        setNewPassword('')
+        setPasswordMsg({ text: '', type: '' })
         setShowModal(true)
     }
 
     const openEdit = (user) => {
         setEditing(user.id)
         setForm({ ...user })
+        setNewPassword('')
+        setPasswordMsg({ text: '', type: '' })
         setShowModal(true)
     }
 
@@ -569,6 +711,68 @@ function AdminUsers() {
                                 </div>
                             )}
 
+                            {editing && (
+                                <div className="form-group" style={{
+                                    background: 'var(--color-gray-50)',
+                                    border: '1px solid var(--color-gray-200)',
+                                    borderRadius: 'var(--radius-lg)',
+                                    padding: 'var(--space-4)'
+                                }}>
+                                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                                        <Lock size={14} />
+                                        Redefinir Senha
+                                    </label>
+
+                                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                                        <input
+                                            className="form-input"
+                                            type="text"
+                                            value={newPassword}
+                                            onChange={e => setNewPassword(e.target.value)}
+                                            placeholder="Nova senha"
+                                            style={{ flex: 1 }}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="btn btn-primary btn-sm"
+                                            onClick={handleResetPassword}
+                                            style={{ whiteSpace: 'nowrap' }}
+                                        >
+                                            <Key size={14} /> Redefinir
+                                        </button>
+                                    </div>
+
+                                    <div style={{ borderTop: '1px solid var(--color-gray-200)', paddingTop: 'var(--space-3)' }}>
+                                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', display: 'block', marginBottom: 'var(--space-2)' }}>
+                                            Ou envie uma senha temporária por e-mail:
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            onClick={handleSendPasswordEmail}
+                                            disabled={sendingEmail}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                                        >
+                                            {sendingEmail ? <RefreshCw size={14} className="spin" /> : <Mail size={14} />}
+                                            {sendingEmail ? 'Enviando...' : `Enviar senha para ${form.email}`}
+                                        </button>
+                                    </div>
+
+                                    {passwordMsg.text && (
+                                        <div style={{
+                                            marginTop: 'var(--space-2)',
+                                            padding: 'var(--space-2) var(--space-3)',
+                                            borderRadius: 'var(--radius-md)',
+                                            fontSize: 'var(--font-size-sm)',
+                                            background: passwordMsg.type === 'success' ? 'var(--color-success-light, #d4edda)' : 'var(--color-error-light, #f8d7da)',
+                                            color: passwordMsg.type === 'success' ? 'var(--color-success, #155724)' : 'var(--color-error, #721c24)'
+                                        }}>
+                                            {passwordMsg.text}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="form-group">
                                 <label className="form-label">Grupos</label>
                                 <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
@@ -591,15 +795,72 @@ function AdminUsers() {
                                 </div>
                             </div>
 
+                            {/* Dashboards com acesso direto */}
+                            {dashboards.length > 0 && (
+                                <div className="form-group">
+                                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                                        <LayoutDashboard size={14} />
+                                        Dashboards com acesso direto
+                                    </label>
+                                    <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', marginBottom: 8, display: 'block' }}>
+                                        Além dos dashboards herdados pelos grupos, você pode liberar acesso individual a dashboards específicos.
+                                    </span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                        {dashboards.filter(d => d.active).map(d => {
+                                            const inheritedByGroup = d.visibility === 'groups' && d.groups?.some(g => form.groups?.includes(g))
+                                            const isAll = d.visibility === 'all'
+                                            const directAccess = form.allowedDashboards?.includes(d.id)
+                                            return (
+                                                <label key={d.id} style={{
+                                                    display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                                                    padding: 'var(--space-2) var(--space-3)',
+                                                    background: (isAll || inheritedByGroup) ? 'var(--color-gray-50)' : 'transparent',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    fontSize: 'var(--font-size-sm)',
+                                                    cursor: (isAll || inheritedByGroup) ? 'default' : 'pointer',
+                                                    opacity: (isAll || inheritedByGroup) ? 0.7 : 1
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isAll || inheritedByGroup || directAccess}
+                                                        disabled={isAll || inheritedByGroup}
+                                                        onChange={(e) => {
+                                                            const current = form.allowedDashboards || []
+                                                            if (e.target.checked) {
+                                                                setForm({ ...form, allowedDashboards: [...current, d.id] })
+                                                            } else {
+                                                                setForm({ ...form, allowedDashboards: current.filter(x => x !== d.id) })
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span style={{ fontWeight: 500 }}>{d.name}</span>
+                                                    {isAll && <span className="badge badge-success" style={{ fontSize: '10px' }}>Todos</span>}
+                                                    {inheritedByGroup && !isAll && <span className="badge badge-info" style={{ fontSize: '10px' }}>Via grupo</span>}
+                                                    {directAccess && !isAll && !inheritedByGroup && <span className="badge badge-primary" style={{ fontSize: '10px' }}>Acesso direto</span>}
+                                                </label>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Mapeamento RLS por Dashboard */}
-                            {rlsDashboards.length > 0 && (
+                            {(() => {
+                                const userRlsDashboards = rlsDashboards.filter(d => {
+                                    if (d.visibility === 'all') return true
+                                    if (d.visibility === 'groups' && d.groups?.some(g => form.groups?.includes(g))) return true
+                                    if (d.visibility === 'users' && d.users?.includes(form.email)) return true
+                                    if (form.allowedDashboards?.includes(d.id)) return true
+                                    return false
+                                })
+                                return userRlsDashboards.length > 0 && (
                                 <div className="form-group">
                                     <label className="form-label">Roles RLS por Dashboard</label>
                                     <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', marginBottom: 8, display: 'block' }}>
                                         Atribua uma role de segurança (RLS) para cada dashboard que este usuário terá acesso.
                                     </span>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                                        {rlsDashboards.map(d => (
+                                        {userRlsDashboards.map(d => (
                                             <div key={d.id} style={{
                                                 display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
                                                 padding: 'var(--space-3) var(--space-4)',
@@ -632,7 +893,8 @@ function AdminUsers() {
                                         ))}
                                     </div>
                                 </div>
-                            )}
+                                )
+                            })()}
                         </div>
 
                         <div className="modal-footer">

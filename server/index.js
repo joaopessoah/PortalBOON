@@ -8,6 +8,8 @@ import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import bcrypt from 'bcrypt'
+import crypto from 'crypto'
+import { createTransport } from 'nodemailer'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -248,7 +250,7 @@ app.post('/api/login', async (req, res) => {
 // ======================== ENDPOINT: Usuários CRUD ========================
 app.get('/api/users', async (req, res) => {
     try {
-        const query = 'SELECT id, name, email, role, status, groups, rls_mapping as "rlsMapping", created_at FROM portal_boon.users ORDER BY id DESC'
+        const query = 'SELECT id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", created_at FROM portal_boon.users ORDER BY id DESC'
         const result = await dbPool.query(query)
         res.json({ success: true, users: result.rows })
     } catch (error) {
@@ -259,7 +261,7 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
     try {
-        const { name, email, password, role, status, groups, rlsMapping } = req.body
+        const { name, email, password, role, status, groups, rlsMapping, allowedDashboards } = req.body
         if (!name || !email) {
             return res.status(400).json({ error: 'Nome e email são obrigatórios.' })
         }
@@ -273,13 +275,14 @@ app.post('/api/users', async (req, res) => {
 
         const g = JSON.stringify(groups || [])
         const rls = JSON.stringify(rlsMapping || {})
+        const ad = JSON.stringify(allowedDashboards || [])
 
         const insert = `
-            INSERT INTO portal_boon.users (name, email, password_hash, role, status, groups, rls_mapping)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", created_at
+            INSERT INTO portal_boon.users (name, email, password_hash, role, status, groups, rls_mapping, allowed_dashboards)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", created_at
         `
-        const values = [name, email, hashed, role || 'user', status || 'active', g, rls]
+        const values = [name, email, hashed, role || 'user', status || 'active', g, rls, ad]
         const result = await dbPool.query(insert, values)
 
         res.json({ success: true, user: result.rows[0] })
@@ -292,7 +295,7 @@ app.post('/api/users', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
     try {
         const { id } = req.params
-        const { name, email, password, role, status, groups, rlsMapping } = req.body
+        const { name, email, password, role, status, groups, rlsMapping, allowedDashboards } = req.body
 
         const user = await dbPool.query('SELECT * FROM portal_boon.users WHERE id = $1', [id])
         if (user.rows.length === 0) {
@@ -306,14 +309,15 @@ app.put('/api/users/:id', async (req, res) => {
 
         const g = JSON.stringify(groups || [])
         const rls = JSON.stringify(rlsMapping || {})
+        const ad = JSON.stringify(allowedDashboards || [])
 
         const update = `
             UPDATE portal_boon.users
-            SET name = $1, email = $2, password_hash = $3, role = $4, status = $5, groups = $6, rls_mapping = $7
-            WHERE id = $8
-            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", created_at
+            SET name = $1, email = $2, password_hash = $3, role = $4, status = $5, groups = $6, rls_mapping = $7, allowed_dashboards = $8
+            WHERE id = $9
+            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", created_at
         `
-        const values = [name, email, hashed, role, status, g, rls, id]
+        const values = [name, email, hashed, role, status, g, rls, ad, id]
         const result = await dbPool.query(update, values)
 
         res.json({ success: true, user: result.rows[0] })
@@ -334,10 +338,89 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 })
 
+// ======================== ENDPOINT: Redefinir Senha ========================
+app.post('/api/users/:id/reset-password', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { password } = req.body
+
+        if (!password || password.length < 4) {
+            return res.status(400).json({ error: 'A senha deve ter pelo menos 4 caracteres.' })
+        }
+
+        const user = await dbPool.query('SELECT id FROM portal_boon.users WHERE id = $1', [id])
+        if (user.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuário não encontrado.' })
+        }
+
+        const hashed = await bcrypt.hash(password, 10)
+        await dbPool.query('UPDATE portal_boon.users SET password_hash = $1 WHERE id = $2', [hashed, id])
+
+        res.json({ success: true, message: 'Senha redefinida com sucesso.' })
+    } catch (error) {
+        console.error('Reset password error:', error)
+        res.status(500).json({ error: 'Erro ao redefinir senha.' })
+    }
+})
+
+// ======================== ENDPOINT: Enviar Senha por E-mail ========================
+app.post('/api/users/:id/send-password-email', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const userResult = await dbPool.query('SELECT id, name, email FROM portal_boon.users WHERE id = $1', [id])
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuário não encontrado.' })
+        }
+
+        const user = userResult.rows[0]
+
+        // Gerar senha temporária aleatória
+        const tempPassword = crypto.randomBytes(4).toString('hex') // 8 caracteres
+        const hashed = await bcrypt.hash(tempPassword, 10)
+        await dbPool.query('UPDATE portal_boon.users SET password_hash = $1 WHERE id = $2', [hashed, id])
+
+        // Configurar transporte de e-mail
+        const transporter = createTransport({
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: parseInt(process.env.SMTP_PORT || '587'),
+            secure: false,
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            }
+        })
+
+        // Enviar e-mail
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM || process.env.SMTP_USER,
+            to: user.email,
+            subject: 'Boon 360º - Sua nova senha de acesso',
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #6b21a8;">Boon 360º</h2>
+                    <p>Olá <strong>${user.name}</strong>,</p>
+                    <p>Uma nova senha temporária foi gerada para sua conta:</p>
+                    <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0;">
+                        <span style="font-size: 24px; font-weight: bold; letter-spacing: 2px; color: #6b21a8;">${tempPassword}</span>
+                    </div>
+                    <p>Recomendamos que você altere sua senha após o primeiro acesso.</p>
+                    <p style="color: #9ca3af; font-size: 12px;">Este é um e-mail automático, não responda.</p>
+                </div>
+            `
+        })
+
+        res.json({ success: true, message: 'Senha temporária enviada por e-mail.' })
+    } catch (error) {
+        console.error('Send password email error:', error)
+        res.status(500).json({ error: 'Erro ao enviar e-mail. Verifique as configurações SMTP.' })
+    }
+})
+
 // ======================== ENDPOINT: Dashboards CRUD ========================
 app.get('/api/dashboards', async (req, res) => {
     try {
-        const query = 'SELECT id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, last_update as "lastUpdate", created_at as "createdAt" FROM portal_boon.dashboards ORDER BY display_order ASC, id DESC'
+        const query = 'SELECT id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, rls_roles as "rlsRoles", last_update as "lastUpdate", created_at as "createdAt" FROM portal_boon.dashboards ORDER BY display_order ASC, id DESC'
         const result = await dbPool.query(query)
         res.json({ success: true, dashboards: result.rows })
     } catch (error) {
@@ -348,13 +431,13 @@ app.get('/api/dashboards', async (req, res) => {
 
 app.post('/api/dashboards', async (req, res) => {
     try {
-        const { name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, groups, users, pinned, type } = req.body
+        const { name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, groups, users, pinned, type, rlsRoles } = req.body
         const insert = `
-            INSERT INTO portal_boon.dashboards (name, description, category, url, workspace_id, report_id, group_id, display_order, active, visibility, groups, users, pinned, type)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-            RETURNING id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, last_update as "lastUpdate", created_at as "createdAt"
+            INSERT INTO portal_boon.dashboards (name, description, category, url, workspace_id, report_id, group_id, display_order, active, visibility, groups, users, pinned, type, rls_roles)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            RETURNING id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, rls_roles as "rlsRoles", last_update as "lastUpdate", created_at as "createdAt"
         `
-        const values = [name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, JSON.stringify(groups || []), JSON.stringify(users || []), pinned, type || 'powerbi']
+        const values = [name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, JSON.stringify(groups || []), JSON.stringify(users || []), pinned, type || 'powerbi', JSON.stringify(rlsRoles || [])]
         const result = await dbPool.query(insert, values)
         res.json({ success: true, dashboard: result.rows[0] })
     } catch (error) {
@@ -366,14 +449,14 @@ app.post('/api/dashboards', async (req, res) => {
 app.put('/api/dashboards/:id', async (req, res) => {
     try {
         const { id } = req.params
-        const { name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, groups, users, pinned, type } = req.body
+        const { name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, groups, users, pinned, type, rlsRoles } = req.body
         const update = `
             UPDATE portal_boon.dashboards
-            SET name = $1, description = $2, category = $3, url = $4, workspace_id = $5, report_id = $6, group_id = $7, display_order = $8, active = $9, visibility = $10, groups = $11, users = $12, pinned = $13, type = $14, last_update = CURRENT_TIMESTAMP
-            WHERE id = $15
-            RETURNING id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, last_update as "lastUpdate", created_at as "createdAt"
+            SET name = $1, description = $2, category = $3, url = $4, workspace_id = $5, report_id = $6, group_id = $7, display_order = $8, active = $9, visibility = $10, groups = $11, users = $12, pinned = $13, type = $14, rls_roles = $15, last_update = CURRENT_TIMESTAMP
+            WHERE id = $16
+            RETURNING id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, rls_roles as "rlsRoles", last_update as "lastUpdate", created_at as "createdAt"
         `
-        const values = [name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, JSON.stringify(groups || []), JSON.stringify(users || []), pinned, type || 'powerbi', id]
+        const values = [name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, JSON.stringify(groups || []), JSON.stringify(users || []), pinned, type || 'powerbi', JSON.stringify(rlsRoles || []), id]
         const result = await dbPool.query(update, values)
         res.json({ success: true, dashboard: result.rows[0] })
     } catch (error) {

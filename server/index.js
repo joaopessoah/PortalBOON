@@ -14,6 +14,13 @@ const __dirname = path.dirname(__filename)
 
 dotenv.config()
 
+// DEBUG TEMPORÁRIO - remover depois
+console.log('[DEBUG] DB_PASS length:', process.env.DB_PASS?.length)
+console.log('[DEBUG] DB_PASS first 3 chars:', process.env.DB_PASS?.substring(0, 3))
+console.log('[DEBUG] DB_PASS last 3 chars:', process.env.DB_PASS?.slice(-3))
+console.log('[DEBUG] DB_USER:', process.env.DB_USER)
+console.log('[DEBUG] DB_HOST:', process.env.DB_HOST)
+
 const { Pool } = pg
 const dbPool = new Pool({
     host: process.env.DB_HOST,

@@ -1,8 +1,8 @@
 # Dependências
 node_modules/
 
-# Build
-dist/
+# Build - não ignorar dist/ (precisa ser commitado para o Hostinger)
+# dist/
 
 # Arquivos de ambiente
 .env

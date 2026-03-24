@@ -12,14 +12,19 @@ import bcrypt from 'bcrypt'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-dotenv.config()
+dotenv.config({ path: path.join(__dirname, '.env') })
+dotenv.config({ path: path.join(__dirname, '../.env') })
 
-// DEBUG TEMPORÁRIO - remover depois
-console.log('[DEBUG] DB_PASS length:', process.env.DB_PASS?.length)
-console.log('[DEBUG] DB_PASS first 3 chars:', process.env.DB_PASS?.substring(0, 3))
-console.log('[DEBUG] DB_PASS last 3 chars:', process.env.DB_PASS?.slice(-3))
-console.log('[DEBUG] DB_USER:', process.env.DB_USER)
-console.log('[DEBUG] DB_HOST:', process.env.DB_HOST)
+// Corrige a senha caso a Hostinger escape caracteres especiais
+let dbPassword = process.env.DB_PASS || ''
+dbPassword = dbPassword.replace(/\\([{}>\[\]&%*+])/g, '$1')
+if (dbPassword.startsWith("'") && dbPassword.endsWith("'")) {
+    dbPassword = dbPassword.slice(1, -1)
+}
+if (dbPassword.startsWith('"') && dbPassword.endsWith('"')) {
+    dbPassword = dbPassword.slice(1, -1)
+}
+console.log('[DB] Password length after cleanup:', dbPassword.length)
 
 const { Pool } = pg
 const dbPool = new Pool({
@@ -27,7 +32,7 @@ const dbPool = new Pool({
     port: process.env.DB_PORT,
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
-    password: process.env.DB_PASS,
+    password: dbPassword,
     ssl: { rejectUnauthorized: false }
 })
 

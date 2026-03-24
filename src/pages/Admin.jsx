@@ -61,7 +61,7 @@ function AdminDashboards() {
         url: '', workspaceId: '', reportId: '', groupId: '',
         order: dashboards.length + 1, active: true,
         visibility: 'all', groups: [], users: [], pinned: false,
-        rlsRoles: []
+        rlsRoles: [], type: 'powerbi'
     }
 
     const [form, setForm] = useState(emptyForm)
@@ -228,62 +228,92 @@ function AdminDashboards() {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Power BI URL *</label>
-                                <input
-                                    className="form-input"
-                                    value={form.url}
-                                    onChange={e => {
-                                        const newUrl = e.target.value
-                                        const updates = { url: newUrl }
-                                        // Auto-extrair reportId e workspaceId da URL
-                                        try {
-                                            const u = new URL(newUrl)
-                                            const groupMatch = u.pathname.match(/\/groups\/([^/]+)/)
-                                            const reportMatch = u.pathname.match(/\/reports\/([^/]+)/)
-                                            if (groupMatch) updates.workspaceId = groupMatch[1]
-                                            if (reportMatch) updates.reportId = reportMatch[1]
-                                        } catch { /* URL incompleta */ }
-                                        setForm({ ...form, ...updates })
-                                    }}
-                                    placeholder="https://app.powerbi.com/groups/.../reports/..."
-                                />
-                            </div>
-
-                            <div className="modal-row">
-                                <div className="form-group">
-                                    <label className="form-label">Workspace ID</label>
-                                    <input
-                                        className="form-input"
-                                        value={form.workspaceId}
-                                        onChange={e => setForm({ ...form, workspaceId: e.target.value })}
-                                        placeholder="Opcional"
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Report ID</label>
-                                    <input
-                                        className="form-input"
-                                        value={form.reportId}
-                                        onChange={e => setForm({ ...form, reportId: e.target.value })}
-                                        placeholder="Opcional"
-                                    />
+                                <label className="form-label">Tipo de Publicação *</label>
+                                <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontSize: 'var(--font-size-sm)', padding: '8px 16px', borderRadius: 8, border: form.type === 'powerbi' ? '2px solid var(--color-primary)' : '2px solid var(--color-gray-200)', background: form.type === 'powerbi' ? 'var(--color-primary-50, #f3f0ff)' : 'transparent' }}>
+                                        <input type="radio" name="dashType" value="powerbi" checked={form.type === 'powerbi'} onChange={() => setForm({ ...form, type: 'powerbi' })} />
+                                        Power BI (Embeddado)
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontSize: 'var(--font-size-sm)', padding: '8px 16px', borderRadius: 8, border: form.type === 'external' ? '2px solid var(--color-primary)' : '2px solid var(--color-gray-200)', background: form.type === 'external' ? 'var(--color-primary-50, #f3f0ff)' : 'transparent' }}>
+                                        <input type="radio" name="dashType" value="external" checked={form.type === 'external'} onChange={() => setForm({ ...form, type: 'external' })} />
+                                        Link Externo (URL)
+                                    </label>
                                 </div>
                             </div>
 
-                            <div className="form-group">
-                                <label className="form-label">Roles RLS (segurança)</label>
-                                <input
-                                    className="form-input"
-                                    value={form.rlsRolesText !== undefined ? form.rlsRolesText : (form.rlsRoles || []).join(', ')}
-                                    onChange={e => {
-                                        setForm({ ...form, rlsRolesText: e.target.value })
-                                    }}
-                                    placeholder="Ex: Grupo Financeiro, Grupo RH (separar por vírgula)"
-                                />
-                                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', marginTop: 4, display: 'block' }}>
-                                    Informe os nomes dos roles de segurança (RLS) do Power BI. Deixe vazio se não usar RLS.
-                                </span>
-                            </div>
+                            {form.type === 'powerbi' ? (
+                                <>
+                                    <div className="form-group">
+                                        <label className="form-label">Power BI URL *</label>
+                                        <input
+                                            className="form-input"
+                                            value={form.url}
+                                            onChange={e => {
+                                                const newUrl = e.target.value
+                                                const updates = { url: newUrl }
+                                                try {
+                                                    const u = new URL(newUrl)
+                                                    const groupMatch = u.pathname.match(/\/groups\/([^/]+)/)
+                                                    const reportMatch = u.pathname.match(/\/reports\/([^/]+)/)
+                                                    if (groupMatch) updates.workspaceId = groupMatch[1]
+                                                    if (reportMatch) updates.reportId = reportMatch[1]
+                                                } catch { /* URL incompleta */ }
+                                                setForm({ ...form, ...updates })
+                                            }}
+                                            placeholder="https://app.powerbi.com/groups/.../reports/..."
+                                        />
+                                    </div>
+
+                                    <div className="modal-row">
+                                        <div className="form-group">
+                                            <label className="form-label">Workspace ID</label>
+                                            <input
+                                                className="form-input"
+                                                value={form.workspaceId}
+                                                onChange={e => setForm({ ...form, workspaceId: e.target.value })}
+                                                placeholder="Opcional"
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Report ID</label>
+                                            <input
+                                                className="form-input"
+                                                value={form.reportId}
+                                                onChange={e => setForm({ ...form, reportId: e.target.value })}
+                                                placeholder="Opcional"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label className="form-label">Roles RLS (segurança)</label>
+                                        <input
+                                            className="form-input"
+                                            value={form.rlsRolesText !== undefined ? form.rlsRolesText : (form.rlsRoles || []).join(', ')}
+                                            onChange={e => {
+                                                setForm({ ...form, rlsRolesText: e.target.value })
+                                            }}
+                                            placeholder="Ex: Grupo Financeiro, Grupo RH (separar por vírgula)"
+                                        />
+                                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', marginTop: 4, display: 'block' }}>
+                                            Informe os nomes dos roles de segurança (RLS) do Power BI. Deixe vazio se não usar RLS.
+                                        </span>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="form-group">
+                                    <label className="form-label">URL do Site Externo *</label>
+                                    <input
+                                        className="form-input"
+                                        value={form.url}
+                                        onChange={e => setForm({ ...form, url: e.target.value })}
+                                        placeholder="https://exemplo.com.br"
+                                    />
+                                    <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)', marginTop: 4, display: 'block' }}>
+                                        O usuário será redirecionado para esta URL em uma nova aba ao clicar no card.
+                                    </span>
+                                </div>
+                            )}
 
                             <div className="modal-row">
                                 <div className="form-group">

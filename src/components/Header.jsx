@@ -20,10 +20,7 @@ export default function Header() {
         <header className="header">
             <div className="header-inner">
                 <Link to={user ? (isAdmin ? '/admin' : '/dashboards') : '/'} className="header-logo">
-                    <div className="header-logo-icon">
-                        <LayoutDashboard size={22} />
-                    </div>
-                    Boon 360º
+                    <img src="https://static.wixstatic.com/media/a6237b_5c3dbaac09854174a8148bcdd5de45c5~mv2.png/v1/crop/x_0,y_44,w_2335,h_923/fill/w_258,h_102,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/2%20(1)_edited.png" alt="Boon Saúde" style={{ height: 32 }} />
                 </Link>
 
                 <button className="header-mobile-toggle" onClick={() => setMobileOpen(!mobileOpen)}>
@@ -49,6 +46,13 @@ export default function Header() {
                                 onClick={() => setMobileOpen(false)}
                             >
                                 Dashboards
+                            </Link>
+                            <Link
+                                to="/ativacoes"
+                                className={`header-nav-link ${isActive('/ativacoes') ? 'active' : ''}`}
+                                onClick={() => setMobileOpen(false)}
+                            >
+                                Ativações
                             </Link>
                             <Link
                                 to="/"

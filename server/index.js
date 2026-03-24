@@ -2,12 +2,37 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { ConfidentialClientApplication } from '@azure/msal-node'
+import pg from 'pg'
+import { exec } from 'child_process'
+import fs from 'fs/promises'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import bcrypt from 'bcrypt'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 dotenv.config()
 
+const { Pool } = pg
+const dbPool = new Pool({
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASS,
+    ssl: { rejectUnauthorized: false }
+})
+
 const app = express()
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:4173'] }))
+
+// Configuração do CORS - Em produção, pode ser mais restrito
+app.use(cors())
 app.use(express.json())
+
+// Servir arquivos estáticos do frontend (pasta dist)
+// Em produção, a pasta dist estará um nível acima da pasta server ou no mesmo nível
+app.use(express.static(path.join(__dirname, '../dist')))
 
 const PORT = process.env.PORT || 3001
 
@@ -172,6 +197,404 @@ app.post('/api/embed-token', async (req, res) => {
     }
 })
 
+// ======================== ENDPOINT: Login ========================
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' })
+        }
+
+        const query = 'SELECT id, name, email, password_hash, role, status FROM portal_boon.users WHERE email = $1'
+        const result = await dbPool.query(query, [email])
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'E-mail ou senha inválidos.' })
+        }
+
+        const user = result.rows[0]
+
+        if (user.status !== 'active') {
+            return res.status(403).json({ error: 'Esta conta está desativada.' })
+        }
+
+        const match = await bcrypt.compare(password, user.password_hash)
+
+        if (!match) {
+            return res.status(401).json({ error: 'E-mail ou senha inválidos.' })
+        }
+
+        // Remover o hash da senha antes de enviar para o cliente
+        delete user.password_hash
+        res.json({ success: true, user })
+
+    } catch (error) {
+        console.error('Login error:', error)
+        res.status(500).json({ error: 'Erro interno no servidor ao processar o login.' })
+    }
+})
+
+// ======================== ENDPOINT: Usuários CRUD ========================
+app.get('/api/users', async (req, res) => {
+    try {
+        const query = 'SELECT id, name, email, role, status, groups, rls_mapping as "rlsMapping", created_at FROM portal_boon.users ORDER BY id DESC'
+        const result = await dbPool.query(query)
+        res.json({ success: true, users: result.rows })
+    } catch (error) {
+        console.error('List users error:', error)
+        res.status(500).json({ error: 'Erro ao listar usuários.' })
+    }
+})
+
+app.post('/api/users', async (req, res) => {
+    try {
+        const { name, email, password, role, status, groups, rlsMapping } = req.body
+        if (!name || !email) {
+            return res.status(400).json({ error: 'Nome e email são obrigatórios.' })
+        }
+        const check = await dbPool.query('SELECT id FROM portal_boon.users WHERE email = $1', [email])
+        if (check.rows.length > 0) {
+            return res.status(400).json({ error: 'E-mail já está em uso.' })
+        }
+
+        const pwd = password || '123'
+        const hashed = await bcrypt.hash(pwd, 10)
+
+        const g = JSON.stringify(groups || [])
+        const rls = JSON.stringify(rlsMapping || {})
+
+        const insert = `
+            INSERT INTO portal_boon.users (name, email, password_hash, role, status, groups, rls_mapping)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", created_at
+        `
+        const values = [name, email, hashed, role || 'user', status || 'active', g, rls]
+        const result = await dbPool.query(insert, values)
+
+        res.json({ success: true, user: result.rows[0] })
+    } catch (error) {
+        console.error('Create user error:', error)
+        res.status(500).json({ error: 'Erro ao criar usuário.' })
+    }
+})
+
+app.put('/api/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { name, email, password, role, status, groups, rlsMapping } = req.body
+
+        const user = await dbPool.query('SELECT * FROM portal_boon.users WHERE id = $1', [id])
+        if (user.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuário não encontrado.' })
+        }
+
+        let hashed = user.rows[0].password_hash
+        if (password) {
+            hashed = await bcrypt.hash(password, 10)
+        }
+
+        const g = JSON.stringify(groups || [])
+        const rls = JSON.stringify(rlsMapping || {})
+
+        const update = `
+            UPDATE portal_boon.users
+            SET name = $1, email = $2, password_hash = $3, role = $4, status = $5, groups = $6, rls_mapping = $7
+            WHERE id = $8
+            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", created_at
+        `
+        const values = [name, email, hashed, role, status, g, rls, id]
+        const result = await dbPool.query(update, values)
+
+        res.json({ success: true, user: result.rows[0] })
+    } catch (error) {
+        console.error('Update user error:', error)
+        res.status(500).json({ error: 'Erro ao atualizar usuário.' })
+    }
+})
+
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        await dbPool.query('DELETE FROM portal_boon.users WHERE id = $1', [id])
+        res.json({ success: true })
+    } catch (error) {
+        console.error('Delete user error:', error)
+        res.status(500).json({ error: 'Erro ao excluir usuário.' })
+    }
+})
+
+// ======================== ENDPOINT: Dashboards CRUD ========================
+app.get('/api/dashboards', async (req, res) => {
+    try {
+        const query = 'SELECT id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, last_update as "lastUpdate", created_at as "createdAt" FROM portal_boon.dashboards ORDER BY display_order ASC, id DESC'
+        const result = await dbPool.query(query)
+        res.json({ success: true, dashboards: result.rows })
+    } catch (error) {
+        console.error('List dashboards error:', error)
+        res.status(500).json({ error: 'Erro ao listar dashboards.' })
+    }
+})
+
+app.post('/api/dashboards', async (req, res) => {
+    try {
+        const { name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, groups, users, pinned, type } = req.body
+        const insert = `
+            INSERT INTO portal_boon.dashboards (name, description, category, url, workspace_id, report_id, group_id, display_order, active, visibility, groups, users, pinned, type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, last_update as "lastUpdate", created_at as "createdAt"
+        `
+        const values = [name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, JSON.stringify(groups || []), JSON.stringify(users || []), pinned, type || 'powerbi']
+        const result = await dbPool.query(insert, values)
+        res.json({ success: true, dashboard: result.rows[0] })
+    } catch (error) {
+        console.error('Create dashboard error:', error)
+        res.status(500).json({ error: 'Erro ao criar dashboard.' })
+    }
+})
+
+app.put('/api/dashboards/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, groups, users, pinned, type } = req.body
+        const update = `
+            UPDATE portal_boon.dashboards
+            SET name = $1, description = $2, category = $3, url = $4, workspace_id = $5, report_id = $6, group_id = $7, display_order = $8, active = $9, visibility = $10, groups = $11, users = $12, pinned = $13, type = $14, last_update = CURRENT_TIMESTAMP
+            WHERE id = $15
+            RETURNING id, name, description, category, url, workspace_id as "workspaceId", report_id as "reportId", group_id as "groupId", display_order as "order", active, visibility, groups, users, pinned, type, last_update as "lastUpdate", created_at as "createdAt"
+        `
+        const values = [name, description, category, url, workspaceId, reportId, groupId, order, active, visibility, JSON.stringify(groups || []), JSON.stringify(users || []), pinned, type || 'powerbi', id]
+        const result = await dbPool.query(update, values)
+        res.json({ success: true, dashboard: result.rows[0] })
+    } catch (error) {
+        console.error('Update dashboard error:', error)
+        res.status(500).json({ error: 'Erro ao atualizar dashboard.' })
+    }
+})
+
+app.delete('/api/dashboards/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        await dbPool.query('DELETE FROM portal_boon.dashboards WHERE id = $1', [id])
+        res.json({ success: true })
+    } catch (error) {
+        console.error('Delete dashboard error:', error)
+        res.status(500).json({ error: 'Erro ao excluir dashboard.' })
+    }
+})
+
+// ======================== ENDPOINTS: Metadados ========================
+app.get('/api/categories', async (req, res) => {
+    try {
+        const result = await dbPool.query('SELECT * FROM portal_boon.categories ORDER BY name')
+        res.json({ success: true, categories: result.rows })
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao listar categorias.' })
+    }
+})
+
+app.get('/api/groups', async (req, res) => {
+    try {
+        const result = await dbPool.query('SELECT * FROM portal_boon.groups ORDER BY name')
+        res.json({ success: true, groups: result.rows.map(r => r.name) })
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao listar grupos.' })
+    }
+})
+
+// ======================== ENDPOINT: Buscar Opções Únicas de Filtro ========================
+app.get('/api/ativacoes/opcoes', async (req, res) => {
+    try {
+        console.log("Recebendo request OPCOES com filtros:", req.query);
+        const { estipulante, subEstipulante, ativo, titular, dataAtivacao, grauParentesco } = req.query;
+
+        const buildOptionsQuery = (columnName) => {
+            let query = `SELECT DISTINCT "${columnName}" FROM portal_boon.ativacoes WHERE "${columnName}" IS NOT NULL`;
+            const values = [];
+            let paramIndex = 1;
+
+            if (estipulante && columnName !== 'NomeEstipulante') {
+                query += ` AND "NomeEstipulante" ILIKE $${paramIndex}`;
+                values.push(`%${estipulante}%`);
+                paramIndex++;
+            }
+            if (subEstipulante && columnName !== 'NomeSubestipulante') {
+                query += ` AND "NomeSubestipulante" ILIKE $${paramIndex}`;
+                values.push(`%${subEstipulante}%`);
+                paramIndex++;
+            }
+            if (ativo !== undefined && ativo !== '') {
+                query += ` AND CAST("AtivoBotmaker" AS TEXT) ILIKE $${paramIndex}`;
+                values.push(`%${ativo}%`);
+                paramIndex++;
+            }
+            if (titular && columnName !== 'NomeTitular') {
+                query += ` AND "NomeTitular" ILIKE $${paramIndex}`;
+                values.push(`%${titular}%`);
+                paramIndex++;
+            }
+            if (dataAtivacao) {
+                query += ` AND TO_DATE("DataCriacaoBotmaker", 'DD-MM-YYYY HH24:MI:SS') >= $${paramIndex}`;
+                values.push(dataAtivacao);
+                paramIndex++;
+            }
+            if (grauParentesco && columnName !== 'GrauParentesco') {
+                query += ` AND "GrauParentesco" ILIKE $${paramIndex}`;
+                values.push(`%${grauParentesco}%`);
+                paramIndex++;
+            }
+
+            query += ` ORDER BY "${columnName}"`;
+            return { query, values };
+        };
+
+        const qEstipulantes = buildOptionsQuery('NomeEstipulante');
+        const qSubEstipulantes = buildOptionsQuery('NomeSubestipulante');
+        const qGraus = buildOptionsQuery('GrauParentesco');
+        const qTitulares = buildOptionsQuery('NomeTitular');
+
+        const [estipulantes, subEstipulantes, grausParentesco, nomesTitulares] = await Promise.all([
+            dbPool.query(qEstipulantes.query, qEstipulantes.values),
+            dbPool.query(qSubEstipulantes.query, qSubEstipulantes.values),
+            dbPool.query(qGraus.query, qGraus.values),
+            dbPool.query(qTitulares.query, qTitulares.values)
+        ]);
+
+        res.json({
+            estipulantes: estipulantes.rows.map(r => r.NomeEstipulante),
+            subEstipulantes: subEstipulantes.rows.map(r => r.NomeSubestipulante),
+            grausParentesco: grausParentesco.rows.map(r => r.GrauParentesco),
+            titulares: nomesTitulares.rows.map(r => r.NomeTitular),
+        });
+    } catch (error) {
+        console.error('API Options error:', error);
+        res.status(500).json({ error: 'Erro ao buscar opções de filtro' });
+    }
+});
+
+// ======================== ENDPOINT: Ativações ========================
+app.get('/api/ativacoes', async (req, res) => {
+    try {
+        const { estipulante, subEstipulante, ativo, titular, dataAtivacao, grauParentesco } = req.query;
+
+        const pageNum = parseInt(req.query.page) || 1;
+        const limitNum = parseInt(req.query.limit) || 100;
+        const offsetNum = (pageNum - 1) * limitNum;
+
+        let query = `
+            SELECT 
+                "NomeEstipulante",
+                "CNPJEstipulante",
+                "NomeSubestipulante",
+                "GrauParentesco",
+                "NomeCompleto",
+                "NomeTitular",
+                "CPF",
+                "CPFTitular",
+                "Contato",
+                "AtivoBotmaker",
+                "DataCriacaoBotmaker",
+                COUNT(*) OVER() as "TotalCount",
+                SUM(CASE WHEN "AtivoBotmaker" = 'Sim' THEN 1 ELSE 0 END) OVER() as "AtivosCount"
+            FROM portal_boon.ativacoes
+            WHERE 1=1
+        `;
+        const values = [];
+        let paramIndex = 1;
+
+        if (estipulante) {
+            query += ` AND "NomeEstipulante" ILIKE $${paramIndex}`;
+            values.push(`%${estipulante}%`);
+            paramIndex++;
+        }
+        if (subEstipulante) {
+            query += ` AND "NomeSubestipulante" ILIKE $${paramIndex}`;
+            values.push(`%${subEstipulante}%`);
+            paramIndex++;
+        }
+        if (ativo !== undefined && ativo !== '') {
+            query += ` AND CAST("AtivoBotmaker" AS TEXT) ILIKE $${paramIndex}`;
+            values.push(`%${ativo}%`);
+            paramIndex++;
+        }
+        if (titular) {
+            query += ` AND "NomeTitular" ILIKE $${paramIndex}`;
+            values.push(`%${titular}%`);
+            paramIndex++;
+        }
+        if (dataAtivacao) {
+            query += ` AND TO_DATE("DataCriacaoBotmaker", 'DD-MM-YYYY HH24:MI:SS') >= $${paramIndex}`;
+            values.push(dataAtivacao);
+            paramIndex++;
+        }
+        if (grauParentesco) {
+            query += ` AND "GrauParentesco" ILIKE $${paramIndex}`;
+            values.push(`%${grauParentesco}%`);
+            paramIndex++;
+        }
+
+        query += ` ORDER BY "DataCriacaoBotmaker" DESC NULLS LAST, "NomeCompleto" ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+        values.push(limitNum, offsetNum);
+
+        const result = await dbPool.query(query, values);
+
+        let total = 0;
+        let ativos = 0;
+        if (result.rows.length > 0) {
+            total = parseInt(result.rows[0].TotalCount, 10);
+            ativos = parseInt(result.rows[0].AtivosCount, 10);
+        } else if (!estipulante && !subEstipulante && !ativo && !titular && !dataAtivacao && pageNum === 1) {
+            // Optional fallback if no filters applied and empty table, counts are 0 anyway.
+        }
+
+        res.json({
+            data: result.rows,
+            total,
+            ativos,
+            page: pageNum,
+            limit: limitNum
+        });
+    } catch (error) {
+        console.error('Database query error:', error);
+        res.status(500).json({ error: 'Erro ao buscar ativações' });
+    }
+})
+
+// ======================== ENDPOINT: Atualizar Ativações (Sync Python) ========================
+app.post('/api/ativacoes/sync', async (req, res) => {
+    try {
+        const pythonScriptPath = path.resolve(__dirname, '../tabela_ativacoes_portalboon.py');
+        const syncFilePath = path.resolve(__dirname, 'last_sync.json');
+
+        exec(`python "${pythonScriptPath}"`, async (error, stdout, stderr) => {
+            if (error) {
+                console.error('Erro na execução do script Python:', error);
+                return res.status(500).json({ error: 'Falha ao executar a atualização de dados.' });
+            }
+
+            // Sucesso, salvar a data e hora
+            const now = new Date().toISOString();
+            await fs.writeFile(syncFilePath, JSON.stringify({ lastSync: now }));
+
+            res.json({ message: 'Dados atualizados com sucesso.', lastSync: now, stdout });
+        });
+    } catch (err) {
+        console.error('Sync process error:', err);
+        res.status(500).json({ error: 'Erro interno ao iniciar a atualização.' });
+    }
+});
+
+app.get('/api/ativacoes/last-sync', async (req, res) => {
+    try {
+        const syncFilePath = path.resolve(__dirname, 'last_sync.json');
+        const data = await fs.readFile(syncFilePath, 'utf-8');
+        res.json(JSON.parse(data));
+    } catch (err) {
+        // Se o arquivo não existir, não é um erro fatal
+        res.json({ lastSync: null });
+    }
+});
+
 // ======================== Health Check ========================
 app.get('/api/health', (req, res) => {
     const configured = !!(process.env.PBI_TENANT_ID && process.env.PBI_CLIENT_ID && process.env.PBI_CLIENT_SECRET)
@@ -184,12 +607,12 @@ app.get('/api/health', (req, res) => {
     })
 })
 
-app.listen(PORT, () => {
+// Rota para qualquer outra requisição - serve o index.html (SPA)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../dist/index.html'))
+})
+
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Boon 360º — Backend rodando na porta ${PORT}`)
     console.log(`   Health check: http://localhost:${PORT}/api/health`)
-
-    if (!process.env.PBI_TENANT_ID || !process.env.PBI_CLIENT_ID || !process.env.PBI_CLIENT_SECRET) {
-        console.log('\n⚠️  Atenção: Credenciais do Service Principal não configuradas!')
-        console.log('   Copie server/.env.example para server/.env e preencha as credenciais.\n')
-    }
 })

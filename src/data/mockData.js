@@ -148,3 +148,66 @@ export const portalSettings = {
     primaryColor: '#7c3aed',
     secondaryColor: '#4c1d95'
 }
+
+export const mockAtivacoes = [
+    {
+        ID: 1,
+        NomeTitular: 'Ana Oliveira',
+        CpfTitular: '***.456.789-**',
+        EmailTitular: 'ana.oliveira@empresa.com.br',
+        DataNascimentoTitular: '1985-05-20',
+        Estipulante: 'Empresa Alpha',
+        SubEstipulante: 'Filial SP',
+        AtivoBotmaker: 'Sim',
+        DataCriacaoBotmaker: '2026-01-10T14:30:00',
+        GrauParentesco: 'Titular'
+    },
+    {
+        ID: 2,
+        NomeTitular: 'Bruno Santos',
+        CpfTitular: '***.123.456-**',
+        EmailTitular: 'bruno.santos@empresa.com.br',
+        DataNascimentoTitular: '1990-11-12',
+        Estipulante: 'Empresa Alpha',
+        SubEstipulante: 'Filial RJ',
+        AtivoBotmaker: 'Sim',
+        DataCriacaoBotmaker: '2026-01-15T09:00:00',
+        GrauParentesco: 'Titular'
+    },
+    {
+        ID: 3,
+        NomeTitular: 'Carla Souza',
+        CpfTitular: '***.789.012-**',
+        EmailTitular: 'carla.souza@empresa.com.br',
+        DataNascimentoTitular: '1982-03-30',
+        Estipulante: 'Empresa Beta',
+        SubEstipulante: 'Sede MG',
+        AtivoBotmaker: 'Não',
+        DataCriacaoBotmaker: '2026-02-01T16:20:00',
+        GrauParentesco: 'Dependente'
+    },
+    {
+        ID: 4,
+        NomeTitular: 'Diego Silva',
+        CpfTitular: '***.321.654-**',
+        EmailTitular: 'diego.silva@empresa.com.br',
+        DataNascimentoTitular: '1995-07-25',
+        Estipulante: 'Empresa Alpha',
+        SubEstipulante: 'Filial SP',
+        AtivoBotmaker: 'Sim',
+        DataCriacaoBotmaker: '2026-02-05T11:10:00',
+        GrauParentesco: 'Titular'
+    },
+    {
+        ID: 5,
+        NomeTitular: 'Elena Ferreira',
+        CpfTitular: '***.987.654-**',
+        EmailTitular: 'elena.ferreira@empresa.com.br',
+        DataNascimentoTitular: '1988-12-05',
+        Estipulante: 'Empresa Gamma',
+        SubEstipulante: 'Filial PR',
+        AtivoBotmaker: 'Sim',
+        DataCriacaoBotmaker: '2026-02-10T08:45:00',
+        GrauParentesco: 'Titular'
+    }
+]

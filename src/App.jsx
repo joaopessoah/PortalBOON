@@ -7,6 +7,7 @@ import Home from './pages/Home'
 import Dashboards from './pages/Dashboards'
 import DashboardView from './pages/DashboardView'
 import Admin from './pages/Admin'
+import Ativacoes from './pages/Ativacoes'
 
 export default function App() {
     return (
@@ -32,6 +33,14 @@ export default function App() {
                             element={
                                 <ProtectedRoute>
                                     <DashboardView />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/ativacoes"
+                            element={
+                                <ProtectedRoute authOnly>
+                                    <Ativacoes />
                                 </ProtectedRoute>
                             }
                         />

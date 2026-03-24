@@ -14,12 +14,11 @@ export default function Home() {
             <section className="home-hero">
                 <div className="container home-hero-content">
                     <h1 className="animate-fade-in-up">
-                        Olá, este é o seu{' '}
-                        <span>Boon 360º!</span>
+                        Olá, eu sou o{' '}
+                        <span>Boon!</span>
                     </h1>
                     <p className="animate-fade-in-up animate-delay-1">
-                        Dashboards Power BI organizados por áreas, com acesso controlado.
-                        Tudo em um só lugar, de forma segura e intuitiva.
+                        O melhor amigo da sua saúde, disponível 24 horas para cuidar de você e da sua empresa! Conheça as nossas soluções integradas!
                     </p>
                     <Link
                         to={user ? '/dashboards' : '/login'}

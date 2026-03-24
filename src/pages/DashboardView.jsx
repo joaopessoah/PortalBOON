@@ -18,6 +18,13 @@ export default function DashboardView() {
 
     const dashboard = getDashboard(id)
 
+    // Se for um link externo, redirecionar para a URL em nova aba e voltar
+    if (dashboard && dashboard.type === 'external' && dashboard.url) {
+        window.open(dashboard.url, '_blank')
+        navigate('/dashboards')
+        return null
+    }
+
     if (!dashboard) {
         return (
             <div>

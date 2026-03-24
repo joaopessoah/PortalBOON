@@ -1,0 +1,30 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cache Vite
+.vite/
+
+# Arquivos temporários e de teste
+response.json
+response2.json
+portal_Boon/
+GEMINI-Construtor-de-Sites.md.txt
+
+# Scripts de migração/teste de banco
+server/test_*.js
+server/alter_*.js
+server/check_*.js
+server/migrate_*.js
+server/last_sync.json

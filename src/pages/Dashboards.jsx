@@ -148,10 +148,17 @@ export default function Dashboards() {
                                                 Atualizado em {formatDate(dash.lastUpdate)}
                                             </span>
 
-                                            <Link to={`/dashboards/${dash.id}`} className="btn btn-primary btn-sm">
-                                                <ExternalLink size={14} />
-                                                Abrir
-                                            </Link>
+                                            {dash.type === 'external' ? (
+                                                <a href={dash.url} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">
+                                                    <ExternalLink size={14} />
+                                                    Abrir
+                                                </a>
+                                            ) : (
+                                                <Link to={`/dashboards/${dash.id}`} className="btn btn-primary btn-sm">
+                                                    <ExternalLink size={14} />
+                                                    Abrir
+                                                </Link>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

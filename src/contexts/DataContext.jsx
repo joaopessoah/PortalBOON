@@ -29,59 +29,137 @@ function saveToStorage(key, value) {
 }
 
 export function DataProvider({ children }) {
-    const [dashboards, setDashboards] = useState(() => loadFromStorage('portal_dashboards', initialDashboards))
-    const [users, setUsers] = useState(() => loadFromStorage('portal_users', initialUsers))
-    const [categories] = useState(initialCategories)
-    const [groups] = useState(initialGroups)
+    const [dashboards, setDashboards] = useState([])
+    const [users, setUsers] = useState([])
+    const [categories, setCategories] = useState([])
+    const [groups, setGroups] = useState([])
     const [settings, setSettings] = useState(() => loadFromStorage('portal_settings', initialSettings))
     const [integrations, setIntegrations] = useState(() => loadFromStorage('portal_integrations', {
         entra: { tenantId: '', clientId: '', clientSecret: '', redirectUri: 'http://localhost:5173/auth/callback', connected: false },
         pbi: { tenantId: '', clientId: '', clientSecret: '', workspaceId: '', connected: false }
     }))
 
-    /* ---- Persistir automaticamente quando mudam ---- */
-    useEffect(() => { saveToStorage('portal_dashboards', dashboards) }, [dashboards])
-    useEffect(() => { saveToStorage('portal_users', users) }, [users])
+    // Fetch inicial de tudo do Banco
+    useEffect(() => {
+        // Dashboards
+        fetch('/api/dashboards').then(r => r.json()).then(data => {
+            if (data.success) setDashboards(data.dashboards)
+        })
+
+        // Usuários
+        fetch('/api/users').then(r => r.json()).then(data => {
+            if (data.success) setUsers(data.users)
+        })
+
+        // Categorias
+        fetch('/api/categories').then(r => r.json()).then(data => {
+            if (data.success) setCategories(data.categories)
+        })
+
+        // Grupos
+        fetch('/api/groups').then(r => r.json()).then(data => {
+            if (data.success) setGroups(data.groups)
+        })
+    }, [])
+
     useEffect(() => { saveToStorage('portal_settings', settings) }, [settings])
     useEffect(() => { saveToStorage('portal_integrations', integrations) }, [integrations])
 
     /* ---- Dashboard CRUD ---- */
-    const addDashboard = (dashboard) => {
-        const newDash = {
-            ...dashboard,
-            id: Date.now(),
-            createdAt: new Date().toISOString(),
-            lastUpdate: new Date().toISOString()
-        }
-        setDashboards(prev => [...prev, newDash])
-        return newDash
+    const addDashboard = async (dashboard) => {
+        try {
+            const res = await fetch('/api/dashboards', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dashboard)
+            })
+            const data = await res.json()
+            if (data.success) {
+                setDashboards(prev => [...prev, data.dashboard])
+                return data.dashboard
+            }
+        } catch (err) { console.error(err) }
     }
 
-    const updateDashboard = (id, data) => {
-        setDashboards(prev =>
-            prev.map(d => (d.id === id ? { ...d, ...data, lastUpdate: new Date().toISOString() } : d))
-        )
+    const updateDashboard = async (id, dashboardData) => {
+        try {
+            const res = await fetch(`/api/dashboards/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dashboardData)
+            })
+            const data = await res.json()
+            if (data.success) {
+                setDashboards(prev => prev.map(d => (d.id === id ? data.dashboard : d)))
+            }
+        } catch (err) { console.error(err) }
     }
 
-    const deleteDashboard = (id) => {
-        setDashboards(prev => prev.filter(d => d.id !== id))
+    const deleteDashboard = async (id) => {
+        try {
+            const res = await fetch(`/api/dashboards/${id}`, { method: 'DELETE' })
+            const data = await res.json()
+            if (data.success) {
+                setDashboards(prev => prev.filter(d => d.id !== id))
+            }
+        } catch (err) { console.error(err) }
     }
 
     const getDashboard = (id) => dashboards.find(d => d.id === Number(id))
 
     /* ---- User CRUD ---- */
-    const addUser = (userData) => {
-        const newUser = { ...userData, id: Date.now() }
-        setUsers(prev => [...prev, newUser])
-        return newUser
+    const addUser = async (userData) => {
+        try {
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+            })
+            const data = await res.json()
+            if (data.success) {
+                setUsers(prev => [data.user, ...prev])
+                return data.user
+            } else {
+                alert(data.error || 'Erro ao criar usuário')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Erro de conexão ao criar usuário')
+        }
     }
 
-    const updateUser = (id, data) => {
-        setUsers(prev => prev.map(u => (u.id === id ? { ...u, ...data } : u)))
+    const updateUser = async (id, userData) => {
+        try {
+            const res = await fetch(`/api/users/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+            })
+            const data = await res.json()
+            if (data.success) {
+                setUsers(prev => prev.map(u => (u.id === id ? data.user : u)))
+            } else {
+                alert(data.error || 'Erro ao atualizar usuário')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Erro de conexão ao atualizar usuário')
+        }
     }
 
-    const deleteUser = (id) => {
-        setUsers(prev => prev.filter(u => u.id !== id))
+    const deleteUser = async (id) => {
+        try {
+            const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
+            const data = await res.json()
+            if (data.success) {
+                setUsers(prev => prev.filter(u => u.id !== id))
+            } else {
+                alert(data.error || 'Erro ao deletar usuário')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Erro de conexão ao deletar usuário')
+        }
     }
 
     /* ---- Dashboards visíveis para um usuário ---- */

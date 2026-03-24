@@ -3,16 +3,16 @@
 /* --- CSS Custom Properties --- */
 :root {
   /* Primary palette */
-  --color-primary: #7c3aed;
-  --color-primary-light: #a78bfa;
-  --color-primary-lighter: #c4b5fd;
-  --color-primary-dark: #5b21b6;
-  --color-primary-darker: #4c1d95;
-  --color-primary-darkest: #3b0764;
+  --color-primary: #6B2A8C;
+  --color-primary-light: #8B4AAB;
+  --color-primary-lighter: #AA6BCA;
+  --color-primary-dark: #5A2376;
+  --color-primary-darker: #4A1560;
+  --color-primary-darkest: #3A084B;
 
   /* Accent */
-  --color-accent: #f472b6;
-  --color-accent-light: #f9a8d4;
+  --color-accent: #FBC02D;
+  --color-accent-light: #FDD835;
 
   /* Neutrals */
   --color-white: #ffffff;
@@ -34,13 +34,13 @@
   --color-info: #2563eb;
 
   /* Gradients */
-  --gradient-hero: linear-gradient(135deg, #7c3aed 0%, #4c1d95 50%, #3b0764 100%);
-  --gradient-card: linear-gradient(135deg, rgba(124, 58, 237, 0.05) 0%, rgba(124, 58, 237, 0.02) 100%);
-  --gradient-button: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-  --gradient-header: linear-gradient(90deg, #5b21b6 0%, #7c3aed 50%, #6d28d9 100%);
+  --gradient-hero: linear-gradient(135deg, #6B2A8C 0%, #4A1560 50%, #3A084B 100%);
+  --gradient-card: linear-gradient(135deg, rgba(107, 42, 140, 0.05) 0%, rgba(107, 42, 140, 0.02) 100%);
+  --gradient-button: linear-gradient(135deg, #6B2A8C 0%, #5A2376 100%);
+  --gradient-header: linear-gradient(90deg, #5A2376 0%, #6B2A8C 50%, #4A1560 100%);
 
   /* Typography */
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
@@ -79,8 +79,8 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  --shadow-card: 0 4px 24px rgba(124, 58, 237, 0.08);
-  --shadow-card-hover: 0 12px 40px rgba(124, 58, 237, 0.15);
+  --shadow-card: 0 4px 24px rgba(107, 42, 140, 0.08);
+  --shadow-card-hover: 0 12px 40px rgba(107, 42, 140, 0.15);
 
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -178,12 +178,12 @@ ol {
 .btn-primary {
   background: var(--gradient-button);
   color: var(--color-white);
-  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3);
+  box-shadow: 0 4px 14px rgba(107, 42, 140, 0.3);
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4);
+  box-shadow: 0 8px 25px rgba(107, 42, 140, 0.4);
 }
 
 .btn-white {
@@ -272,7 +272,7 @@ ol {
 .form-input:focus,
 .form-select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+  box-shadow: 0 0 0 3px rgba(107, 42, 140, 0.1);
 }
 
 .form-input::placeholder {
@@ -294,7 +294,7 @@ ol {
 
 .form-textarea:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+  box-shadow: 0 0 0 3px rgba(107, 42, 140, 0.1);
 }
 
 /* --- Cards --- */
@@ -302,7 +302,7 @@ ol {
   background: var(--color-white);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-card);
-  border: 1px solid rgba(124, 58, 237, 0.06);
+  border: 1px solid rgba(107, 42, 140, 0.06);
   transition: all var(--transition-base);
   overflow: hidden;
 }
@@ -329,7 +329,7 @@ ol {
 }
 
 .badge-primary {
-  background: rgba(124, 58, 237, 0.1);
+  background: rgba(107, 42, 140, 0.1);
   color: var(--color-primary);
 }
 
@@ -399,7 +399,7 @@ ol {
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 4px 20px rgba(91, 33, 182, 0.3);
+  box-shadow: 0 4px 20px rgba(107, 42, 140, 0.3);
 }
 
 .header-inner {

@@ -4,7 +4,7 @@ import Header from '../components/Header'
 import {
     LayoutDashboard, Users, Settings, Plus, Edit2, Trash2, Eye,
     X, Save, Search, ToggleLeft, ToggleRight, Upload, Globe, Key,
-    Lock, Mail, RefreshCw
+    Lock, Mail, RefreshCw, Building2
 } from 'lucide-react'
 
 /* ======================== ADMIN PAGE ======================== */
@@ -14,6 +14,7 @@ export default function Admin() {
     const tabs = [
         { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
         { id: 'users', label: 'Usuários', icon: Users },
+        { id: 'companies', label: 'Empresas', icon: Building2 },
         { id: 'settings', label: 'Configurações', icon: Settings }
     ]
 
@@ -43,6 +44,7 @@ export default function Admin() {
                 <main className="admin-content">
                     {activeTab === 'dashboards' && <AdminDashboards />}
                     {activeTab === 'users' && <AdminUsers />}
+                    {activeTab === 'companies' && <AdminCompanies />}
                     {activeTab === 'settings' && <AdminSettings />}
                 </main>
             </div>
@@ -487,7 +489,7 @@ function AdminDashboards() {
 
 /* ======================== USERS TAB ======================== */
 function AdminUsers() {
-    const { users, addUser, updateUser, deleteUser, groups, dashboards } = useData()
+    const { users, addUser, updateUser, deleteUser, groups, dashboards, companies } = useData()
     const [showModal, setShowModal] = useState(false)
     const [editing, setEditing] = useState(null)
 
@@ -496,7 +498,7 @@ function AdminUsers() {
 
     const emptyForm = {
         name: '', email: '', password: '123', role: 'user',
-        status: 'active', groups: [], rlsMapping: {}
+        status: 'active', groups: [], rlsMapping: {}, companyId: null
     }
 
     const [form, setForm] = useState(emptyForm)
@@ -595,6 +597,7 @@ function AdminUsers() {
                         <tr>
                             <th>Nome</th>
                             <th>E-mail</th>
+                            <th>Empresa</th>
                             <th>Perfil</th>
                             <th>Grupos</th>
                             <th>Status</th>
@@ -606,6 +609,9 @@ function AdminUsers() {
                             <tr key={user.id}>
                                 <td><strong>{user.name}</strong></td>
                                 <td style={{ fontSize: 'var(--font-size-sm)' }}>{user.email}</td>
+                                <td style={{ fontSize: 'var(--font-size-sm)' }}>
+                                    {companies.find(c => c.id === user.companyId)?.name || '—'}
+                                </td>
                                 <td>
                                     <span className={`badge ${user.role === 'admin' ? 'badge-warning' : 'badge-info'}`}>
                                         {user.role === 'admin' ? 'Admin' : 'Usuário'}
@@ -696,6 +702,20 @@ function AdminUsers() {
                                         <option value="inactive">Inativo</option>
                                     </select>
                                 </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Empresa</label>
+                                <select
+                                    className="form-select"
+                                    value={form.companyId || ''}
+                                    onChange={e => setForm({ ...form, companyId: e.target.value ? Number(e.target.value) : null })}
+                                >
+                                    <option value="">Sem empresa</option>
+                                    {companies.filter(c => c.active).map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
                             </div>
 
                             {!editing && (
@@ -897,6 +917,131 @@ function AdminUsers() {
                             })()}
                         </div>
 
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
+                            <button className="btn btn-primary" onClick={handleSave}>
+                                <Save size={16} /> Salvar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    )
+}
+
+/* ======================== COMPANIES TAB ======================== */
+function AdminCompanies() {
+    const { companies, addCompany, updateCompany, deleteCompany } = useData()
+    const [showModal, setShowModal] = useState(false)
+    const [editing, setEditing] = useState(null)
+    const [form, setForm] = useState({ name: '', active: true })
+
+    const openCreate = () => {
+        setEditing(null)
+        setForm({ name: '', active: true })
+        setShowModal(true)
+    }
+
+    const openEdit = (company) => {
+        setEditing(company.id)
+        setForm({ name: company.name, active: company.active })
+        setShowModal(true)
+    }
+
+    const handleSave = () => {
+        if (!form.name.trim()) return
+        if (editing) {
+            updateCompany(editing, form)
+        } else {
+            addCompany(form)
+        }
+        setShowModal(false)
+    }
+
+    const handleDelete = (id) => {
+        if (window.confirm('Tem certeza que deseja excluir esta empresa? Os usuários vinculados ficarão sem empresa.')) {
+            deleteCompany(id)
+        }
+    }
+
+    return (
+        <>
+            <div className="admin-content-header">
+                <h1>🏢 Empresas</h1>
+                <button className="btn btn-primary" onClick={openCreate}>
+                    <Plus size={16} /> Nova Empresa
+                </button>
+            </div>
+
+            <div className="table-container">
+                <table className="table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {companies.map(company => (
+                            <tr key={company.id}>
+                                <td><strong>{company.name}</strong></td>
+                                <td>
+                                    <span className={`badge ${company.active ? 'badge-success' : 'badge-error'}`}>
+                                        {company.active ? 'Ativa' : 'Inativa'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                                        <button className="btn btn-ghost btn-sm" onClick={() => openEdit(company)} title="Editar">
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(company.id)} title="Excluir" style={{ color: 'var(--color-error)' }}>
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                        {companies.length === 0 && (
+                            <tr>
+                                <td colSpan={3} style={{ textAlign: 'center', color: 'var(--color-gray-400)', padding: 'var(--space-8)' }}>
+                                    Nenhuma empresa cadastrada.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {showModal && (
+                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+                        <div className="modal-header">
+                            <h2>{editing ? 'Editar Empresa' : 'Nova Empresa'}</h2>
+                            <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label className="form-label">Nome da Empresa *</label>
+                                <input
+                                    className="form-input"
+                                    value={form.name}
+                                    onChange={e => setForm({ ...form, name: e.target.value })}
+                                    placeholder="Nome da empresa"
+                                />
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}>
+                                <div
+                                    className={`toggle ${form.active ? 'active' : ''}`}
+                                    onClick={() => setForm({ ...form, active: !form.active })}
+                                />
+                                Ativa
+                            </label>
+                        </div>
                         <div className="modal-footer">
                             <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
                             <button className="btn btn-primary" onClick={handleSave}>

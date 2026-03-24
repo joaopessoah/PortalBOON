@@ -33,6 +33,7 @@ export function DataProvider({ children }) {
     const [users, setUsers] = useState([])
     const [categories, setCategories] = useState([])
     const [groups, setGroups] = useState([])
+    const [companies, setCompanies] = useState([])
     const [settings, setSettings] = useState(() => loadFromStorage('portal_settings', initialSettings))
     const [integrations, setIntegrations] = useState(() => loadFromStorage('portal_integrations', {
         entra: { tenantId: '', clientId: '', clientSecret: '', redirectUri: 'http://localhost:5173/auth/callback', connected: false },
@@ -59,6 +60,11 @@ export function DataProvider({ children }) {
         // Grupos
         fetch('/api/groups').then(r => r.json()).then(data => {
             if (data.success) setGroups(data.groups)
+        })
+
+        // Empresas
+        fetch('/api/companies').then(r => r.json()).then(data => {
+            if (data.success) setCompanies(data.companies)
         })
     }, [])
 
@@ -168,15 +174,73 @@ export function DataProvider({ children }) {
         if (currentUser.role === 'admin') return dashboards.filter(d => d.active)
         return dashboards.filter(d => {
             if (!d.active) return false
+            // Acesso direto pelo campo allowedDashboards do usuário
+            if (currentUser.allowedDashboards?.includes(d.id)) return true
+            // Visibilidade configurada no dashboard
             if (d.visibility === 'all') return true
             if (d.visibility === 'groups') {
-                return d.groups.some(g => currentUser.groups?.includes(g))
+                return d.groups?.some(g => currentUser.groups?.includes(g))
             }
             if (d.visibility === 'users') {
                 return d.users?.includes(currentUser.email)
             }
             return false
         })
+    }
+
+    /* ---- Company CRUD ---- */
+    const addCompany = async (companyData) => {
+        try {
+            const res = await fetch('/api/companies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(companyData)
+            })
+            const data = await res.json()
+            if (data.success) {
+                setCompanies(prev => [...prev, data.company].sort((a, b) => a.name.localeCompare(b.name)))
+                return data.company
+            } else {
+                alert(data.error || 'Erro ao criar empresa')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Erro de conexão ao criar empresa')
+        }
+    }
+
+    const updateCompany = async (id, companyData) => {
+        try {
+            const res = await fetch(`/api/companies/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(companyData)
+            })
+            const data = await res.json()
+            if (data.success) {
+                setCompanies(prev => prev.map(c => (c.id === id ? data.company : c)).sort((a, b) => a.name.localeCompare(b.name)))
+            } else {
+                alert(data.error || 'Erro ao atualizar empresa')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Erro de conexão ao atualizar empresa')
+        }
+    }
+
+    const deleteCompany = async (id) => {
+        try {
+            const res = await fetch(`/api/companies/${id}`, { method: 'DELETE' })
+            const data = await res.json()
+            if (data.success) {
+                setCompanies(prev => prev.filter(c => c.id !== id))
+            } else {
+                alert(data.error || 'Erro ao excluir empresa')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Erro de conexão ao excluir empresa')
+        }
     }
 
     /* ---- Settings ---- */
@@ -194,6 +258,7 @@ export function DataProvider({ children }) {
             value={{
                 dashboards, addDashboard, updateDashboard, deleteDashboard, getDashboard,
                 users, addUser, updateUser, deleteUser,
+                companies, addCompany, updateCompany, deleteCompany,
                 categories, groups,
                 settings, updateSettings,
                 integrations, updateIntegrations,

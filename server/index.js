@@ -250,7 +250,7 @@ app.post('/api/login', async (req, res) => {
 // ======================== ENDPOINT: Usuários CRUD ========================
 app.get('/api/users', async (req, res) => {
     try {
-        const query = 'SELECT id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", created_at FROM portal_boon.users ORDER BY id DESC'
+        const query = 'SELECT id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", company_id as "companyId", created_at FROM portal_boon.users ORDER BY id DESC'
         const result = await dbPool.query(query)
         res.json({ success: true, users: result.rows })
     } catch (error) {
@@ -261,7 +261,7 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
     try {
-        const { name, email, password, role, status, groups, rlsMapping, allowedDashboards } = req.body
+        const { name, email, password, role, status, groups, rlsMapping, allowedDashboards, companyId } = req.body
         if (!name || !email) {
             return res.status(400).json({ error: 'Nome e email são obrigatórios.' })
         }
@@ -278,11 +278,11 @@ app.post('/api/users', async (req, res) => {
         const ad = JSON.stringify(allowedDashboards || [])
 
         const insert = `
-            INSERT INTO portal_boon.users (name, email, password_hash, role, status, groups, rls_mapping, allowed_dashboards)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", created_at
+            INSERT INTO portal_boon.users (name, email, password_hash, role, status, groups, rls_mapping, allowed_dashboards, company_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", company_id as "companyId", created_at
         `
-        const values = [name, email, hashed, role || 'user', status || 'active', g, rls, ad]
+        const values = [name, email, hashed, role || 'user', status || 'active', g, rls, ad, companyId || null]
         const result = await dbPool.query(insert, values)
 
         res.json({ success: true, user: result.rows[0] })
@@ -295,7 +295,7 @@ app.post('/api/users', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
     try {
         const { id } = req.params
-        const { name, email, password, role, status, groups, rlsMapping, allowedDashboards } = req.body
+        const { name, email, password, role, status, groups, rlsMapping, allowedDashboards, companyId } = req.body
 
         const user = await dbPool.query('SELECT * FROM portal_boon.users WHERE id = $1', [id])
         if (user.rows.length === 0) {
@@ -313,11 +313,11 @@ app.put('/api/users/:id', async (req, res) => {
 
         const update = `
             UPDATE portal_boon.users
-            SET name = $1, email = $2, password_hash = $3, role = $4, status = $5, groups = $6, rls_mapping = $7, allowed_dashboards = $8
-            WHERE id = $9
-            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", created_at
+            SET name = $1, email = $2, password_hash = $3, role = $4, status = $5, groups = $6, rls_mapping = $7, allowed_dashboards = $8, company_id = $9
+            WHERE id = $10
+            RETURNING id, name, email, role, status, groups, rls_mapping as "rlsMapping", allowed_dashboards as "allowedDashboards", company_id as "companyId", created_at
         `
-        const values = [name, email, hashed, role, status, g, rls, ad, id]
+        const values = [name, email, hashed, role, status, g, rls, ad, companyId || null, id]
         const result = await dbPool.query(update, values)
 
         res.json({ success: true, user: result.rows[0] })
@@ -473,6 +473,71 @@ app.delete('/api/dashboards/:id', async (req, res) => {
     } catch (error) {
         console.error('Delete dashboard error:', error)
         res.status(500).json({ error: 'Erro ao excluir dashboard.' })
+    }
+})
+
+// ======================== ENDPOINT: Empresas CRUD ========================
+app.get('/api/companies', async (req, res) => {
+    try {
+        const result = await dbPool.query('SELECT id, name, active, created_at as "createdAt" FROM portal_boon.companies ORDER BY name ASC')
+        res.json({ success: true, companies: result.rows })
+    } catch (error) {
+        console.error('List companies error:', error)
+        res.status(500).json({ error: 'Erro ao listar empresas.' })
+    }
+})
+
+app.post('/api/companies', async (req, res) => {
+    try {
+        const { name, active } = req.body
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Nome da empresa é obrigatório.' })
+        }
+        const check = await dbPool.query('SELECT id FROM portal_boon.companies WHERE name = $1', [name.trim()])
+        if (check.rows.length > 0) {
+            return res.status(400).json({ error: 'Empresa já cadastrada.' })
+        }
+        const result = await dbPool.query(
+            'INSERT INTO portal_boon.companies (name, active) VALUES ($1, $2) RETURNING id, name, active, created_at as "createdAt"',
+            [name.trim(), active !== false]
+        )
+        res.json({ success: true, company: result.rows[0] })
+    } catch (error) {
+        console.error('Create company error:', error)
+        res.status(500).json({ error: 'Erro ao criar empresa.' })
+    }
+})
+
+app.put('/api/companies/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { name, active } = req.body
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Nome da empresa é obrigatório.' })
+        }
+        const result = await dbPool.query(
+            'UPDATE portal_boon.companies SET name = $1, active = $2 WHERE id = $3 RETURNING id, name, active, created_at as "createdAt"',
+            [name.trim(), active !== false, id]
+        )
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Empresa não encontrada.' })
+        }
+        res.json({ success: true, company: result.rows[0] })
+    } catch (error) {
+        console.error('Update company error:', error)
+        res.status(500).json({ error: 'Erro ao atualizar empresa.' })
+    }
+})
+
+app.delete('/api/companies/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        await dbPool.query('UPDATE portal_boon.users SET company_id = NULL WHERE company_id = $1', [id])
+        await dbPool.query('DELETE FROM portal_boon.companies WHERE id = $1', [id])
+        res.json({ success: true })
+    } catch (error) {
+        console.error('Delete company error:', error)
+        res.status(500).json({ error: 'Erro ao excluir empresa.' })
     }
 })
 

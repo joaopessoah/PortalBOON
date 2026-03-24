@@ -206,20 +206,25 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' })
         }
 
+        console.log('[LOGIN] Buscando usuário:', email)
         const query = 'SELECT id, name, email, password_hash, role, status FROM portal_boon.users WHERE email = $1'
         const result = await dbPool.query(query, [email])
+        console.log('[LOGIN] Query retornou', result.rows.length, 'resultado(s)')
 
         if (result.rows.length === 0) {
             return res.status(401).json({ error: 'E-mail ou senha inválidos.' })
         }
 
         const user = result.rows[0]
+        console.log('[LOGIN] Usuário encontrado, status:', user.status, ', role:', user.role)
 
         if (user.status !== 'active') {
             return res.status(403).json({ error: 'Esta conta está desativada.' })
         }
 
+        console.log('[LOGIN] Comparando senha com bcrypt...')
         const match = await bcrypt.compare(password, user.password_hash)
+        console.log('[LOGIN] Resultado bcrypt:', match)
 
         if (!match) {
             return res.status(401).json({ error: 'E-mail ou senha inválidos.' })
@@ -227,10 +232,11 @@ app.post('/api/login', async (req, res) => {
 
         // Remover o hash da senha antes de enviar para o cliente
         delete user.password_hash
+        console.log('[LOGIN] Login bem-sucedido para:', email)
         res.json({ success: true, user })
 
     } catch (error) {
-        console.error('Login error:', error)
+        console.error('[LOGIN] Erro detalhado:', error.message, error.stack)
         res.status(500).json({ error: 'Erro interno no servidor ao processar o login.' })
     }
 })

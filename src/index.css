@@ -1307,8 +1307,63 @@ ol {
     padding: var(--space-4);
   }
 
+  .admin-sidebar-title {
+    display: none;
+  }
+
+  .admin-section-header h2 {
+    font-size: 18px;
+  }
+
   .modal-row {
     grid-template-columns: 1fr;
+  }
+
+  /* Jobs responsivo */
+  .jobs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .jobs-section {
+    padding: 14px;
+  }
+
+  .jobs-card {
+    padding: 12px;
+  }
+
+  .jobs-card-top {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .jobs-card-footer {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .jobs-card-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .jobs-schedule-row {
+    flex-wrap: wrap;
+  }
+
+  .jobs-times {
+    width: 100%;
+  }
+
+  .jobs-btn-run {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .jobs-log {
+    max-height: 200px;
+    font-size: 10px;
   }
 }
 

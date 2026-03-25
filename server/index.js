@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url'
 import bcrypt from 'bcrypt'
 import crypto from 'crypto'
 import { createTransport } from 'nodemailer'
+import cron from 'node-cron'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -752,6 +753,256 @@ app.get('/api/ativacoes/last-sync', async (req, res) => {
         res.json({ lastSync: null });
     }
 });
+
+// ======================== AGENDAMENTOS qBem ========================
+
+// Estado dos jobs em memória
+const jobStatus = {
+    import_contratos: { running: false, lastRun: null, lastResult: null, output: '' },
+    import_beneficiarios: { running: false, lastRun: null, lastResult: null, output: '' },
+    import_beneficiarios_alterados: { running: false, lastRun: null, lastResult: null, output: '' },
+    tabela_ativacoes: { running: false, lastRun: null, lastResult: null, output: '' },
+    botmaker_full: { running: false, lastRun: null, lastResult: null, output: '' },
+    botmaker_3dias: { running: false, lastRun: null, lastResult: null, output: '' },
+    moderna_atendimentos: { running: false, lastRun: null, lastResult: null, output: '' },
+    moderna_atendimentos_full: { running: false, lastRun: null, lastResult: null, output: '' }
+}
+
+// Carregar último status salvo
+const jobStatusFile = path.resolve(__dirname, 'job_status.json')
+try {
+    const saved = JSON.parse(await fs.readFile(jobStatusFile, 'utf-8'))
+    for (const key of Object.keys(jobStatus)) {
+        if (saved[key]) {
+            jobStatus[key].lastRun = saved[key].lastRun
+            jobStatus[key].lastResult = saved[key].lastResult
+        }
+    }
+} catch { /* arquivo ainda não existe */ }
+
+async function saveJobStatus() {
+    const toSave = {}
+    for (const [key, val] of Object.entries(jobStatus)) {
+        toSave[key] = { lastRun: val.lastRun, lastResult: val.lastResult }
+    }
+    await fs.writeFile(jobStatusFile, JSON.stringify(toSave, null, 2))
+}
+
+function runScript(scriptName) {
+    const job = jobStatus[scriptName]
+    if (job.running) return null
+
+    const scriptPath = path.resolve(__dirname, 'scripts', `${scriptName}.py`)
+    job.running = true
+    job.output = ''
+    job.lastResult = null
+
+    // -u = unbuffered para output em tempo real
+    const proc = exec(`python -u "${scriptPath}"`, { timeout: 3600000 })
+
+    proc.stdout.on('data', (data) => { job.output += data.toString() })
+    proc.stderr.on('data', (data) => { job.output += data.toString() })
+
+    const promise = new Promise((resolve) => {
+        proc.on('close', async (code) => {
+            job.running = false
+            job.lastRun = new Date().toISOString()
+            job.lastResult = code === 0 ? 'success' : 'error'
+            await saveJobStatus()
+            resolve(code)
+        })
+    })
+
+    return promise
+
+    return true
+}
+
+// Listar status de todos os jobs
+app.get('/api/jobs', (req, res) => {
+    const result = {}
+    for (const [key, val] of Object.entries(jobStatus)) {
+        result[key] = {
+            running: val.running,
+            lastRun: val.lastRun,
+            lastResult: val.lastResult
+        }
+    }
+    res.json(result)
+})
+
+// Executar um job
+app.post('/api/jobs/:name/run', (req, res) => {
+    const { name } = req.params
+    if (!jobStatus[name]) {
+        return res.status(404).json({ error: 'Job não encontrado.' })
+    }
+    if (jobStatus[name].running) {
+        return res.status(409).json({ error: 'Job já está em execução.' })
+    }
+    runScript(name)
+    res.json({ message: `Job ${name} iniciado.` })
+})
+
+// Ver output em tempo real de um job
+app.get('/api/jobs/:name/output', (req, res) => {
+    const { name } = req.params
+    if (!jobStatus[name]) {
+        return res.status(404).json({ error: 'Job não encontrado.' })
+    }
+    res.json({
+        running: jobStatus[name].running,
+        output: jobStatus[name].output,
+        lastRun: jobStatus[name].lastRun,
+        lastResult: jobStatus[name].lastResult
+    })
+})
+
+// Executar cadeia de jobs (um após o outro)
+app.post('/api/jobs/chain', async (req, res) => {
+    const { jobs: jobNames } = req.body
+    if (!Array.isArray(jobNames) || jobNames.length === 0) {
+        return res.status(400).json({ error: 'Envie um array de jobs.' })
+    }
+    // Verifica se algum já está rodando
+    for (const name of jobNames) {
+        if (!jobStatus[name]) return res.status(404).json({ error: `Job ${name} não encontrado.` })
+        if (jobStatus[name].running) return res.status(409).json({ error: `Job ${name} já está em execução.` })
+    }
+    // Inicia o primeiro e encadeia os demais em background
+    res.json({ message: `Cadeia iniciada: ${jobNames.join(' → ')}` })
+
+    for (const name of jobNames) {
+        console.log(`[CHAIN] Executando ${name}...`)
+        const promise = runScript(name)
+        if (promise) {
+            const code = await promise
+            if (code !== 0) {
+                console.log(`[CHAIN] ${name} falhou (code ${code}). Parando cadeia.`)
+                break
+            }
+        }
+    }
+    console.log('[CHAIN] Cadeia finalizada.')
+})
+
+// ======================== CRON - Agendamentos Automáticos (PostgreSQL) ========================
+
+const activeCrons = {}
+let schedules = {}
+
+// Criar tabela de agendamentos se não existir + seed com valores padrão
+async function initSchedulesTable() {
+    const client = await dbPool.connect()
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS portal_boon.schedules (
+                job_name VARCHAR(100) PRIMARY KEY,
+                enabled BOOLEAN DEFAULT true,
+                times JSONB DEFAULT '[]'::jsonb,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                updated_by VARCHAR(200)
+            );
+        `)
+        // Seed: insere padrão apenas se tabela estiver vazia
+        const { rowCount } = await client.query('SELECT 1 FROM portal_boon.schedules LIMIT 1')
+        if (rowCount === 0) {
+            await client.query(`
+                INSERT INTO portal_boon.schedules (job_name, enabled, times) VALUES
+                ('import_contratos', true, '["08:30","12:30"]'::jsonb),
+                ('import_beneficiarios_alterados', true, '["08:30","12:30"]'::jsonb)
+            `)
+        }
+    } finally {
+        client.release()
+    }
+}
+
+async function loadSchedules() {
+    const { rows } = await dbPool.query('SELECT job_name, enabled, times FROM portal_boon.schedules')
+    schedules = {}
+    for (const row of rows) {
+        schedules[row.job_name] = { enabled: row.enabled, times: row.times }
+    }
+    return schedules
+}
+
+async function saveSchedule(jobName, enabled, times, updatedBy) {
+    await dbPool.query(`
+        INSERT INTO portal_boon.schedules (job_name, enabled, times, updated_at, updated_by)
+        VALUES ($1, $2, $3::jsonb, NOW(), $4)
+        ON CONFLICT (job_name) DO UPDATE SET
+            enabled = EXCLUDED.enabled,
+            times = EXCLUDED.times,
+            updated_at = NOW(),
+            updated_by = EXCLUDED.updated_by
+    `, [jobName, enabled, JSON.stringify(times), updatedBy])
+}
+
+function setupCrons() {
+    // Limpa todos os crons ativos
+    for (const tasks of Object.values(activeCrons)) {
+        tasks.forEach(t => t.stop())
+    }
+    for (const key of Object.keys(activeCrons)) {
+        delete activeCrons[key]
+    }
+
+    // Recria os crons baseado na configuração
+    for (const [jobName, config] of Object.entries(schedules)) {
+        if (!config.enabled || !jobStatus[jobName]) continue
+        activeCrons[jobName] = []
+
+        for (const time of config.times) {
+            const [hour, minute] = time.split(':')
+            const cronExpr = `${minute} ${hour} * * *`
+            const task = cron.schedule(cronExpr, () => {
+                console.log(`[CRON] Executando ${jobName} às ${time}`)
+                runScript(jobName)
+            }, { timezone: 'America/Sao_Paulo' })
+            activeCrons[jobName].push(task)
+        }
+
+        console.log(`[CRON] ${jobName}: ${config.times.join(', ')}`)
+    }
+}
+
+// Inicializa tabela e crons
+await initSchedulesTable()
+await loadSchedules()
+setupCrons()
+
+// Listar agendamentos
+app.get('/api/schedules', async (req, res) => {
+    try {
+        await loadSchedules()
+        res.json(schedules)
+    } catch (err) {
+        console.error('Erro ao buscar agendamentos:', err)
+        res.status(500).json({ error: 'Erro ao buscar agendamentos.' })
+    }
+})
+
+// Atualizar agendamento de um job
+app.put('/api/schedules/:name', async (req, res) => {
+    const { name } = req.params
+    if (!jobStatus[name]) {
+        return res.status(404).json({ error: 'Job não encontrado.' })
+    }
+    const { enabled, times, updatedBy } = req.body
+    const newEnabled = enabled !== undefined ? enabled : (schedules[name]?.enabled ?? false)
+    const newTimes = times || schedules[name]?.times || []
+
+    try {
+        await saveSchedule(name, newEnabled, newTimes, updatedBy || null)
+        await loadSchedules()
+        setupCrons()
+        res.json({ message: 'Agendamento atualizado.', schedule: schedules[name] })
+    } catch (err) {
+        console.error('Erro ao salvar agendamento:', err)
+        res.status(500).json({ error: 'Erro ao salvar agendamento.' })
+    }
+})
 
 // ======================== Health Check ========================
 app.get('/api/health', (req, res) => {

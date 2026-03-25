@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useData } from '../contexts/DataContext'
 import Header from '../components/Header'
 import {
     LayoutDashboard, Users, Settings, Plus, Edit2, Trash2, Eye,
     X, Save, Search, ToggleLeft, ToggleRight, Upload, Globe, Key,
-    Lock, Mail, RefreshCw, Building2
+    Lock, Mail, RefreshCw, Building2, Clock, Play, CheckCircle, AlertCircle, Loader
 } from 'lucide-react'
 
 /* ======================== ADMIN PAGE ======================== */
@@ -12,10 +12,11 @@ export default function Admin() {
     const [activeTab, setActiveTab] = useState('dashboards')
 
     const tabs = [
+        { id: 'jobs', label: 'Agendamentos', icon: Clock },
+        { id: 'settings', label: 'Configurações', icon: Settings },
         { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
-        { id: 'users', label: 'Usuários', icon: Users },
         { id: 'companies', label: 'Empresas', icon: Building2 },
-        { id: 'settings', label: 'Configurações', icon: Settings }
+        { id: 'users', label: 'Usuários', icon: Users }
     ]
 
     return (
@@ -45,6 +46,7 @@ export default function Admin() {
                     {activeTab === 'dashboards' && <AdminDashboards />}
                     {activeTab === 'users' && <AdminUsers />}
                     {activeTab === 'companies' && <AdminCompanies />}
+                    {activeTab === 'jobs' && <AdminJobs />}
                     {activeTab === 'settings' && <AdminSettings />}
                 </main>
             </div>
@@ -1051,6 +1053,229 @@ function AdminCompanies() {
                     </div>
                 </div>
             )}
+        </>
+    )
+}
+
+/* ======================== JOBS TAB ======================== */
+function AdminJobs() {
+    const [jobs, setJobs] = useState({})
+    const [outputs, setOutputs] = useState({})
+    const [activeOutput, setActiveOutput] = useState(null)
+    const [schedules, setSchedules] = useState({})
+    const [loading, setLoading] = useState(true)
+
+    const SECTIONS = [
+        {
+            id: 'moderna',
+            title: 'Atendimentos Moderna',
+            color: '#ec4899',
+            jobs: {
+                moderna_atendimentos_full: { label: 'Atendimentos (Total)', description: 'Carga total desde 01/01/2025' },
+                moderna_atendimentos: { label: 'Atendimentos (2 dias)', description: 'Incremental com os últimos 2 dias' }
+            }
+        },
+        {
+            id: 'ativacoes',
+            title: 'Ativações Boon',
+            color: '#f59e0b',
+            jobs: {
+                tabela_ativacoes: { label: 'Tabela Ativações', description: 'Ativações do portal' }
+            }
+        },
+        {
+            id: 'botmaker',
+            title: 'Botmaker',
+            color: '#10b981',
+            jobs: {
+                botmaker_full: { label: 'Pipeline Completo', description: 'Carga total desde 2024' },
+                botmaker_3dias: { label: 'Pipeline (2 dias)', description: 'Incremental com os últimos 2 dias' }
+            }
+        },
+        {
+            id: 'qbem',
+            title: 'qBem',
+            color: '#6366f1',
+            jobs: {
+                import_contratos: { label: 'Contratos', description: 'Carga total via API' },
+                import_beneficiarios: { label: 'Beneficiarios (Total)', description: 'Carga completa (~7h)' },
+                import_beneficiarios_alterados: { label: 'Beneficiarios (2 dias)', description: 'Incremental com os últimos 2 dias' }
+            }
+        }
+    ]
+
+    const fetchJobs = async () => {
+        try {
+            const res = await fetch('/api/jobs')
+            const data = await res.json()
+            setJobs(data)
+        } catch (e) { console.error('Erro ao buscar jobs:', e) }
+        setLoading(false)
+    }
+
+    const fetchSchedules = async () => {
+        try {
+            const res = await fetch('/api/schedules')
+            const data = await res.json()
+            setSchedules(data)
+        } catch (e) { console.error('Erro ao buscar agendamentos:', e) }
+    }
+
+    const fetchOutput = async (name) => {
+        try {
+            const res = await fetch(`/api/jobs/${name}/output`)
+            const data = await res.json()
+            setOutputs(prev => ({ ...prev, [name]: data }))
+        } catch (e) { console.error('Erro ao buscar output:', e) }
+    }
+
+    const activeOutputRef = useRef(activeOutput)
+    activeOutputRef.current = activeOutput
+
+    useEffect(() => {
+        fetchJobs()
+        fetchSchedules()
+        const interval = setInterval(() => {
+            fetchJobs()
+            if (activeOutputRef.current) fetchOutput(activeOutputRef.current)
+        }, 3000)
+        return () => clearInterval(interval)
+    }, [])
+
+    useEffect(() => {
+        if (activeOutput) fetchOutput(activeOutput)
+    }, [activeOutput])
+
+    const runJob = async (name) => {
+        try {
+            await fetch(`/api/jobs/${name}/run`, { method: 'POST' })
+            setActiveOutput(name)
+            fetchJobs()
+        } catch (e) { console.error('Erro ao iniciar job:', e) }
+    }
+
+    const toggleSchedule = async (name) => {
+        const current = schedules[name] || { enabled: false, times: ['08:30', '12:30'] }
+        try {
+            await fetch(`/api/schedules/${name}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...current, enabled: !current.enabled })
+            })
+            fetchSchedules()
+        } catch (e) { console.error('Erro ao atualizar agendamento:', e) }
+    }
+
+    const updateScheduleTimes = async (name, times) => {
+        const current = schedules[name] || { enabled: false, times: [] }
+        try {
+            await fetch(`/api/schedules/${name}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...current, times })
+            })
+            fetchSchedules()
+        } catch (e) { console.error('Erro ao atualizar horários:', e) }
+    }
+
+    const addTime = (name) => updateScheduleTimes(name, [...(schedules[name]?.times || []), '08:00'])
+    const removeTime = (name, i) => updateScheduleTimes(name, (schedules[name]?.times || []).filter((_, idx) => idx !== i))
+    const changeTime = (name, i, val) => {
+        const t = [...(schedules[name]?.times || [])]; t[i] = val; updateScheduleTimes(name, t)
+    }
+
+    const formatDate = (iso) => !iso ? '--' : new Date(iso).toLocaleString('pt-BR')
+
+    const StatusBadge = ({ job }) => {
+        if (job.running) return <span className="jobs-badge jobs-badge--running"><Loader size={12} className="spin" /> Executando</span>
+        if (job.lastResult === 'success') return <span className="jobs-badge jobs-badge--success"><CheckCircle size={12} /> Sucesso</span>
+        if (job.lastResult === 'error') return <span className="jobs-badge jobs-badge--error"><AlertCircle size={12} /> Erro</span>
+        return <span className="jobs-badge jobs-badge--idle">Aguardando</span>
+    }
+
+    if (loading) return <p>Carregando...</p>
+
+    return (
+        <>
+            <div className="admin-section-header">
+                <h2>Agendamentos</h2>
+            </div>
+
+            <div className="jobs-sections">
+                {SECTIONS.map(section => (
+                    <div key={section.id} className="jobs-section">
+                        <div className="jobs-section-header">
+                            <span className="jobs-section-dot" style={{ background: section.color }} />
+                            <h3 className="jobs-section-title">{section.title}</h3>
+                        </div>
+
+                        {Object.keys(section.jobs).length === 0 ? (
+                            <div className="jobs-empty">
+                                <Clock size={20} style={{ opacity: 0.3 }} />
+                                <span>Nenhum agendamento configurado</span>
+                            </div>
+                        ) : (
+                            <div className="jobs-grid">
+                                {Object.entries(section.jobs).map(([name, config]) => {
+                                    const job = jobs[name] || {}
+                                    const output = outputs[name]
+                                    const isActive = activeOutput === name
+                                    const schedule = schedules[name] || { enabled: false, times: [] }
+
+                                    return (
+                                        <div key={name} className="jobs-card">
+                                            <div className="jobs-card-top">
+                                                <div className="jobs-card-info">
+                                                    <span className="jobs-card-label">{config.label}</span>
+                                                    <span className="jobs-card-desc">{config.description}</span>
+                                                </div>
+                                                <StatusBadge job={job} />
+                                            </div>
+
+                                            <div className="jobs-schedule-row">
+                                                <button className="jobs-toggle" onClick={() => toggleSchedule(name)}>
+                                                    {schedule.enabled
+                                                        ? <ToggleRight size={20} style={{ color: 'var(--color-success)' }} />
+                                                        : <ToggleLeft size={20} style={{ opacity: 0.4 }} />
+                                                    }
+                                                </button>
+                                                <div className="jobs-times">
+                                                    {(schedule.times || []).map((time, i) => (
+                                                        <div key={i} className="jobs-time-chip">
+                                                            <input type="time" value={time} onChange={e => changeTime(name, i, e.target.value)} className="jobs-time-input" />
+                                                            <button onClick={() => removeTime(name, i)} className="jobs-time-remove"><X size={12} /></button>
+                                                        </div>
+                                                    ))}
+                                                    <button className="jobs-time-add" onClick={() => addTime(name)}><Plus size={12} /></button>
+                                                </div>
+                                            </div>
+
+                                            <div className="jobs-card-footer">
+                                                <div className="jobs-card-last-wrapper">
+                                                    <span className="jobs-card-last-label">Última atualização:</span>
+                                                    <span className="jobs-card-last">{formatDate(job.lastRun)}</span>
+                                                </div>
+                                                <div className="jobs-card-actions">
+                                                    <button className="jobs-btn-log" onClick={() => { setActiveOutput(isActive ? null : name); if (!isActive) fetchOutput(name) }}>
+                                                        <Eye size={14} />
+                                                    </button>
+                                                    <button className="jobs-btn-run" disabled={job.running} onClick={() => runJob(name)}>
+                                                        <Play size={14} /> Executar
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {isActive && (
+                                                <pre className="jobs-log">{output?.output || 'Nenhum log disponivel.'}</pre>
+                                            )}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
         </>
     )
 }

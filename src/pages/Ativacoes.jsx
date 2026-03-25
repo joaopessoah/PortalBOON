@@ -116,11 +116,33 @@ export default function Ativacoes() {
     const handleSync = async () => {
         setSyncing(true)
         try {
-            const res = await fetch('/api/ativacoes/sync', { method: 'POST' })
-            if (!res.ok) throw new Error('Falha ao sincronizar dados.')
-            const data = await res.json()
-            setLastSync(data.lastSync)
-            fetchAtivacoes(page) // reload items
+            // Executa Pipeline Botmaker (2 dias) → Tabela Ativações em sequência
+            const res = await fetch('/api/jobs/chain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobs: ['botmaker_3dias', 'tabela_ativacoes'] })
+            })
+            if (!res.ok) throw new Error('Falha ao iniciar atualização.')
+
+            // Polling para acompanhar quando ambos terminarem
+            const checkDone = () => new Promise((resolve) => {
+                const interval = setInterval(async () => {
+                    try {
+                        const jobsRes = await fetch('/api/jobs')
+                        const jobs = await jobsRes.json()
+                        const b = jobs.botmaker_3dias || {}
+                        const t = jobs.tabela_ativacoes || {}
+                        if (!b.running && !t.running) {
+                            clearInterval(interval)
+                            resolve()
+                        }
+                    } catch { /* retry */ }
+                }, 5000)
+            })
+            await checkDone()
+
+            setLastSync(new Date().toISOString())
+            fetchAtivacoes(page)
         } catch (err) {
             console.error(err)
             alert(err.message)

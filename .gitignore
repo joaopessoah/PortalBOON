@@ -28,3 +28,5 @@ server/alter_*.js
 server/check_*.js
 server/migrate_*.js
 server/last_sync.json
+server/job_status.json
+server/schedules.json

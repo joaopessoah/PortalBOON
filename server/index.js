@@ -18,6 +18,8 @@ const __dirname = path.dirname(__filename)
 dotenv.config({ path: path.join(__dirname, '.env') })
 dotenv.config({ path: path.join(__dirname, '../.env') })
 
+const PYTHON_EXE = process.env.PYTHON_PATH || 'python3'
+
 // Corrige a senha caso a Hostinger escape caracteres especiais
 let dbPassword = process.env.DB_PASS || ''
 dbPassword = dbPassword.replace(/\\([{}>\[\]&%*+])/g, '$1')
@@ -725,7 +727,7 @@ app.post('/api/ativacoes/sync', async (req, res) => {
         const pythonScriptPath = path.resolve(__dirname, '../tabela_ativacoes_portalboon.py');
         const syncFilePath = path.resolve(__dirname, 'last_sync.json');
 
-        exec(`python "${pythonScriptPath}"`, async (error, stdout, stderr) => {
+        exec(`"${PYTHON_EXE}" "${pythonScriptPath}"`, async (error, stdout, stderr) => {
             if (error) {
                 console.error('Erro na execução do script Python:', error);
                 return res.status(500).json({ error: 'Falha ao executar a atualização de dados.' });
@@ -798,7 +800,7 @@ function runScript(scriptName) {
     job.lastResult = null
 
     // -u = unbuffered para output em tempo real
-    const proc = exec(`python -u "${scriptPath}"`, { timeout: 3600000 })
+    const proc = exec(`"${PYTHON_EXE}" -u "${scriptPath}"`, { timeout: 3600000 })
 
     proc.stdout.on('data', (data) => { job.output += data.toString() })
     proc.stderr.on('data', (data) => { job.output += data.toString() })

@@ -18,8 +18,8 @@ export default function Admin() {
         { id: 'settings', label: 'Configurações', icon: Settings },
         { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
         { id: 'companies', label: 'Empresas', icon: Building2 },
-        { id: 'sla-amar-cuidar', label: 'SLA Amar & Cuidar', icon: HeartPulse },
         { id: 'feriados', label: 'Feriados', icon: Clock },
+        { id: 'sla-amar-cuidar', label: 'SLA Amar & Cuidar', icon: HeartPulse },
         { id: 'users', label: 'Usuários', icon: Users }
     ]
 

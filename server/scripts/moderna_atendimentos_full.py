@@ -111,6 +111,11 @@ def run():
     conn = psycopg2.connect(**DB_CONFIG)
     conn.autocommit = True
 
+    # Limpar tabela antes de recarregar
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE TABLE moderna.atendimentos")
+    print("Tabela moderna.atendimentos limpa.\n")
+
     total = 0
     day = START_DATE
 

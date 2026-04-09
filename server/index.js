@@ -1180,7 +1180,7 @@ app.get('/api/sla-dashboard/top-fora-prazo', async (req, res) => {
 app.get('/api/sla-dashboard/em-aberto', async (req, res) => {
     try {
         const { where, params } = slaWhere(req, "status_sla LIKE 'Em atendimento%'")
-        const rows = await dbPool.query(`SELECT smprpac_id, smpesfis_nome, assunto, data_atendimento, data_prazo_sla, status_sla, dias_corridos, dias_restantes_sla, estipulante_razao, usuario FROM portal_boon.vw_sla_atendimentos${where} ORDER BY dias_restantes_sla ASC LIMIT 100`, params)
+        const rows = await dbPool.query(`SELECT smprpac_id, smpesfis_nome, assunto, atendimento, data_prazo_sla, status_sla, dias_uteis, dias_restantes_sla, estipulante_razao, usuario FROM portal_boon.vw_sla_atendimentos${where} ORDER BY dias_restantes_sla ASC LIMIT 100`, params)
         res.json(rows.rows)
     } catch (err) { res.status(500).json({ error: err.message }) }
 })
@@ -1725,6 +1725,33 @@ app.get('/api/sla-dashboard/atend-top-profissionais', async (req, res) => {
         const { where, params } = slaWhere(req, "usuario IS NOT NULL AND usuario != ''")
         const rows = await dbPool.query(`SELECT usuario, COUNT(*)::int as total, SUM(CASE WHEN motivo_baixa='REALIZADO' THEN 1 ELSE 0 END)::int as realizados, SUM(CASE WHEN motivo_baixa='FALTA DO PACIENTE' THEN 1 ELSE 0 END)::int as faltas FROM portal_boon.vw_sla_atendimentos${where} GROUP BY usuario ORDER BY total DESC LIMIT 10`, params)
         res.json(rows.rows)
+    } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// ---- Feriados CRUD ----
+app.get('/api/feriados', async (req, res) => {
+    try {
+        const rows = await dbPool.query('SELECT * FROM portal_boon.feriados ORDER BY data DESC')
+        res.json(rows.rows)
+    } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/feriados', async (req, res) => {
+    try {
+        const { data, descricao, tipo } = req.body
+        if (!data || !descricao) return res.status(400).json({ error: 'Data e descrição são obrigatórios.' })
+        const result = await dbPool.query('INSERT INTO portal_boon.feriados (data, descricao, tipo) VALUES ($1, $2, $3) RETURNING *', [data, descricao, tipo || 'nacional'])
+        res.json({ success: true, feriado: result.rows[0] })
+    } catch (err) {
+        if (err.code === '23505') return res.status(400).json({ error: 'Já existe um feriado nesta data.' })
+        res.status(500).json({ error: err.message })
+    }
+})
+
+app.delete('/api/feriados/:id', async (req, res) => {
+    try {
+        await dbPool.query('DELETE FROM portal_boon.feriados WHERE id = $1', [req.params.id])
+        res.json({ success: true })
     } catch (err) { res.status(500).json({ error: err.message }) }
 })
 

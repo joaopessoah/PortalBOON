@@ -19,6 +19,7 @@ export default function Admin() {
         { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
         { id: 'companies', label: 'Empresas', icon: Building2 },
         { id: 'sla-amar-cuidar', label: 'SLA Amar & Cuidar', icon: HeartPulse },
+        { id: 'feriados', label: 'Feriados', icon: Clock },
         { id: 'users', label: 'Usuários', icon: Users }
     ]
 
@@ -52,6 +53,7 @@ export default function Admin() {
                     {activeTab === 'jobs' && <AdminJobs />}
                     {activeTab === 'settings' && <AdminSettings />}
                     {activeTab === 'sla-amar-cuidar' && <AdminSlaAmarCuidar />}
+                    {activeTab === 'feriados' && <AdminFeriados />}
                 </main>
             </div>
         </div>
@@ -1674,6 +1676,136 @@ function AdminSettings() {
 }
 
 /* ======================== SLA AMAR & CUIDAR TAB ======================== */
+/* ======================== FERIADOS TAB ======================== */
+function AdminFeriados() {
+    const [feriados, setFeriados] = useState([])
+    const [showModal, setShowModal] = useState(false)
+    const [form, setForm] = useState({ data: '', descricao: '', tipo: 'nacional' })
+    const [search, setSearch] = useState('')
+
+    const fetchFeriados = async () => {
+        try {
+            const res = await fetch('/api/feriados')
+            const data = await res.json()
+            setFeriados(data)
+        } catch (err) { console.error(err) }
+    }
+
+    useEffect(() => { fetchFeriados() }, [])
+
+    const handleSave = async () => {
+        if (!form.data || !form.descricao.trim()) { alert('Preencha data e descrição.'); return }
+        try {
+            const res = await fetch('/api/feriados', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form)
+            })
+            const data = await res.json()
+            if (data.error) { alert(data.error); return }
+            setShowModal(false)
+            setForm({ data: '', descricao: '', tipo: 'nacional' })
+            fetchFeriados()
+        } catch (err) { alert('Erro: ' + err.message) }
+    }
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Excluir este feriado?')) return
+        await fetch('/api/feriados/' + id, { method: 'DELETE' })
+        fetchFeriados()
+    }
+
+    const filtered = feriados.filter(f => {
+        if (!search) return true
+        const s = search.toLowerCase()
+        return f.descricao.toLowerCase().includes(s) || f.data?.includes(s)
+    })
+
+    const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '-'
+
+    return (
+        <>
+            <div className="admin-content-header">
+                <h1>Feriados</h1>
+                <button className="btn btn-primary" onClick={() => { setForm({ data: '', descricao: '', tipo: 'nacional' }); setShowModal(true) }}>
+                    <Plus size={16} /> Novo Feriado
+                </button>
+            </div>
+
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+                <div style={{ position: 'relative', maxWidth: 300 }}>
+                    <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-gray-400)' }} />
+                    <input className="form-input" placeholder="Buscar feriado..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
+                </div>
+            </div>
+
+            <div className="table-container">
+                <table className="table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Descrição</th>
+                            <th>Tipo</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filtered.map(f => (
+                            <tr key={f.id}>
+                                <td><strong>{formatDate(f.data)}</strong></td>
+                                <td>{f.descricao}</td>
+                                <td><span className="badge badge-info" style={{ fontSize: 10 }}>{f.tipo}</span></td>
+                                <td>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(f.id)} title="Excluir" style={{ color: 'var(--color-error)' }}>
+                                        <Trash2 size={14} />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                        {filtered.length === 0 && (
+                            <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--color-gray-400)', padding: 'var(--space-8)' }}>Nenhum feriado cadastrado.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {showModal && (
+                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+                        <div className="modal-header">
+                            <h2>Novo Feriado</h2>
+                            <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={20} /></button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label className="form-label">Data *</label>
+                                <input type="date" className="form-input" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Descrição *</label>
+                                <input className="form-input" value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Ex: Natal, Carnaval..." />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Tipo</label>
+                                <select className="form-input" value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}>
+                                    <option value="nacional">Nacional</option>
+                                    <option value="estadual">Estadual</option>
+                                    <option value="municipal">Municipal</option>
+                                    <option value="ponto_facultativo">Ponto Facultativo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
+                            <button className="btn btn-primary" onClick={handleSave}><Save size={16} /> Salvar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    )
+}
+
 function AdminSlaAmarCuidar() {
     const { user } = useAuth()
     const [registros, setRegistros] = useState([])

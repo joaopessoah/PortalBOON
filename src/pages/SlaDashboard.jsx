@@ -400,7 +400,7 @@ export default function SlaDashboard() {
             { key: 'assunto', label: 'Assunto' },
             { key: 'data_atendimento', label: 'Data', fmt: fmtD },
             { key: 'data_prazo_sla', label: 'Prazo', fmt: fmtD },
-            { key: 'dias_corridos', label: 'Dias', align: 'center' },
+            { key: 'dias_uteis', label: 'Dias', align: 'center' },
             { key: 'status_sla', label: 'Status' },
         ])
     }
@@ -699,9 +699,9 @@ export default function SlaDashboard() {
                                         return <tr key={i}>
                                             <td style={{fontWeight:500}}>{r.smpesfis_nome||'-'}</td>
                                             <td title={r.assunto} style={{maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.assunto||'-'}</td>
-                                            <td>{fmtD(r.data_atendimento)}</td>
+                                            <td>{fmtD(r.atendimento)}</td>
                                             <td>{fmtD(r.data_prazo_sla)}</td>
-                                            <td style={{fontWeight:700,color:late?'#ef4444':'#f59e0b'}}>{r.dias_corridos}d</td>
+                                            <td style={{fontWeight:700,color:late?'#ef4444':'#f59e0b'}}>{r.dias_uteis}d úteis</td>
                                             <td><span className={`badge ${late?'badge-error':'badge-success'}`} style={{fontSize:9,padding:'2px 6px'}}>{late?'Atrasado':'No prazo'}</span></td>
                                         </tr>
                                     })}

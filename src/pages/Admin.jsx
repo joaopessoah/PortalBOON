@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useData } from '../contexts/DataContext'
+import { useAuth } from '../contexts/AuthContext'
 import Header from '../components/Header'
 import {
     LayoutDashboard, Users, Settings, Plus, Edit2, Trash2, Eye,
     X, Save, Search, ToggleLeft, ToggleRight, Upload, Globe, Key,
-    Lock, Mail, RefreshCw, Building2, Clock, Play, CheckCircle, AlertCircle, Loader
+    Lock, Mail, RefreshCw, Building2, Clock, Play, CheckCircle, AlertCircle, Loader,
+    HeartPulse
 } from 'lucide-react'
 
 /* ======================== ADMIN PAGE ======================== */
@@ -16,6 +18,7 @@ export default function Admin() {
         { id: 'settings', label: 'Configurações', icon: Settings },
         { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
         { id: 'companies', label: 'Empresas', icon: Building2 },
+        { id: 'sla-amar-cuidar', label: 'SLA Amar & Cuidar', icon: HeartPulse },
         { id: 'users', label: 'Usuários', icon: Users }
     ]
 
@@ -48,6 +51,7 @@ export default function Admin() {
                     {activeTab === 'companies' && <AdminCompanies />}
                     {activeTab === 'jobs' && <AdminJobs />}
                     {activeTab === 'settings' && <AdminSettings />}
+                    {activeTab === 'sla-amar-cuidar' && <AdminSlaAmarCuidar />}
                 </main>
             </div>
         </div>
@@ -146,7 +150,7 @@ function AdminDashboards() {
 
     const filteredDashboards = dashboards.filter(d =>
         d.name.toLowerCase().includes(search.toLowerCase())
-    )
+    ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
 
     return (
         <>
@@ -211,9 +215,11 @@ function AdminDashboards() {
                                         <button className="btn btn-ghost btn-sm" onClick={() => window.open(`/dashboards/${dash.id}`, '_blank')} title="Visualizar">
                                             <Eye size={14} />
                                         </button>
+                                        {!dash.systemProtected && (
                                         <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(dash.id)} title="Excluir" style={{ color: 'var(--color-error)' }}>
                                             <Trash2 size={14} />
                                         </button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -498,15 +504,22 @@ function AdminUsers() {
     // Dashboards que têm RLS configurado
     const rlsDashboards = dashboards.filter(d => d.rlsRoles && d.rlsRoles.length > 0)
 
+    const [estipulantesDisponiveis, setEstipulantesDisponiveis] = useState([])
+
+    useEffect(() => {
+        fetch('/api/sla-dashboard/estipulantes').then(r=>r.json()).then(setEstipulantesDisponiveis).catch(()=>{})
+    }, [])
+
     const emptyForm = {
         name: '', email: '', password: '123', role: 'user',
-        status: 'active', groups: [], rlsMapping: {}, companyId: null
+        status: 'active', groups: [], rlsMapping: {}, companyId: null, estipulantesPermitidas: []
     }
 
     const [form, setForm] = useState(emptyForm)
     const [newPassword, setNewPassword] = useState('')
     const [passwordMsg, setPasswordMsg] = useState({ text: '', type: '' })
     const [sendingEmail, setSendingEmail] = useState(false)
+    const [estSearch, setEstSearch] = useState('')
 
     const handleResetPassword = async () => {
         if (!newPassword.trim() || newPassword.length < 4) {
@@ -562,7 +575,9 @@ function AdminUsers() {
 
     const openEdit = (user) => {
         setEditing(user.id)
-        setForm({ ...user })
+        let ep = user.estipulantesPermitidas || []
+        if (typeof ep === 'string') try { ep = JSON.parse(ep) } catch(e) { ep = [] }
+        setForm({ ...user, estipulantesPermitidas: ep })
         setNewPassword('')
         setPasswordMsg({ text: '', type: '' })
         setShowModal(true)
@@ -602,6 +617,7 @@ function AdminUsers() {
                             <th>Empresa</th>
                             <th>Perfil</th>
                             <th>Grupos</th>
+                            <th>Estipulantes</th>
                             <th>Status</th>
                             <th>Ações</th>
                         </tr>
@@ -624,6 +640,16 @@ function AdminUsers() {
                                         {user.groups?.map(g => (
                                             <span key={g} className="badge badge-primary" style={{ fontSize: '10px' }}>{g}</span>
                                         ))}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+                                        {(() => {
+                                            let ep = user.estipulantesPermitidas || []
+                                            if (typeof ep === 'string') try { ep = JSON.parse(ep) } catch(e) { ep = [] }
+                                            if (!Array.isArray(ep) || ep.length === 0) return <span className="badge badge-success" style={{ fontSize: '10px' }}>Todas</span>
+                                            return ep.map(e => <span key={e} className="badge" style={{ fontSize: '9px', background: '#6B2A8C15', color: '#6B2A8C' }}>{e.length > 20 ? e.slice(0,20)+'...' : e}</span>)
+                                        })()}
                                     </div>
                                 </td>
                                 <td>
@@ -718,6 +744,47 @@ function AdminUsers() {
                                         <option key={c.id} value={c.id}>{c.name}</option>
                                     ))}
                                 </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Estipulantes Permitidas (Amar&Cuidar)</label>
+                                <input
+                                    className="form-input"
+                                    placeholder="Buscar estipulante..."
+                                    value={estSearch}
+                                    onChange={e => setEstSearch(e.target.value)}
+                                    style={{ marginBottom: 6, fontSize: 'var(--font-size-xs)' }}
+                                />
+                                <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: 8, padding: 8, maxHeight: 180, overflow: 'auto', background: 'var(--color-gray-50)' }}>
+                                    {!estSearch && (
+                                        <>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-sm)', padding: '4px 0', fontWeight: 600, color: 'var(--color-primary)' }}>
+                                            <input type="checkbox"
+                                                checked={!form.estipulantesPermitidas || form.estipulantesPermitidas.length === 0}
+                                                onChange={e => { if (e.target.checked) setForm({ ...form, estipulantesPermitidas: [] }) }}
+                                            /> Todas as estipulantes
+                                        </label>
+                                        <div style={{ borderTop: '1px solid var(--color-gray-200)', margin: '4px 0' }} />
+                                        </>
+                                    )}
+                                    {estipulantesDisponiveis
+                                        .filter(est => !estSearch || est.toLowerCase().includes(estSearch.toLowerCase()))
+                                        .map(est => (
+                                        <label key={est} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-xs)', padding: '3px 0', cursor: 'pointer' }}>
+                                            <input type="checkbox"
+                                                checked={(form.estipulantesPermitidas || []).includes(est)}
+                                                onChange={e => {
+                                                    const current = form.estipulantesPermitidas || []
+                                                    const updated = e.target.checked ? [...current, est] : current.filter(x => x !== est)
+                                                    setForm({ ...form, estipulantesPermitidas: updated })
+                                                }}
+                                            /> {est}
+                                        </label>
+                                    ))}
+                                </div>
+                                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)' }}>
+                                    Vazio = acesso a todas. Selecione para restringir.
+                                </span>
                             </div>
 
                             {!editing && (
@@ -1602,6 +1669,330 @@ function AdminSettings() {
                     </button>
                 </div>
             </div>
+        </>
+    )
+}
+
+/* ======================== SLA AMAR & CUIDAR TAB ======================== */
+function AdminSlaAmarCuidar() {
+    const { user } = useAuth()
+    const [registros, setRegistros] = useState([])
+    const [showModal, setShowModal] = useState(false)
+    const [editing, setEditing] = useState(null)
+    const [filtro, setFiltro] = useState('vigentes')
+    const [search, setSearch] = useState('')
+    const [conflito, setConflito] = useState(null)
+    const emptyForm = { tema: '', grau_risco: '', sla_dias: '', data_inicio: new Date().toISOString().split('T')[0], data_fim: '' }
+    const [form, setForm] = useState(emptyForm)
+
+    const fetchRegistros = async () => {
+        try {
+            const res = await fetch('/api/sla-amar-cuidar')
+            const data = await res.json()
+            setRegistros(data)
+        } catch (err) {
+            console.error('Erro ao carregar SLAs:', err)
+        }
+    }
+
+    useEffect(() => { fetchRegistros() }, [])
+
+    const openCreate = () => {
+        setEditing(null)
+        setForm(emptyForm)
+        setConflito(null)
+        setShowModal(true)
+    }
+
+    const openEdit = (reg) => {
+        setEditing(reg.id)
+        setForm({
+            tema: reg.tema,
+            grau_risco: reg.grau_risco,
+            sla_dias: reg.sla_dias,
+            data_inicio: reg.data_inicio?.split('T')[0] || '',
+            data_fim: reg.data_fim?.split('T')[0] || ''
+        })
+        setConflito(null)
+        setShowModal(true)
+    }
+
+    const handleSave = async (force = false) => {
+        if (!form.tema.trim() || !form.grau_risco.trim() || !form.sla_dias || !form.data_inicio) {
+            alert('Preencha todos os campos obrigatórios.')
+            return
+        }
+        try {
+            const payload = {
+                tema: form.tema.trim(),
+                grau_risco: form.grau_risco.trim(),
+                sla_dias: parseInt(form.sla_dias),
+                data_inicio: form.data_inicio,
+                data_fim: form.data_fim || null,
+                usuario_id: user?.id || null,
+                usuario_nome: user?.name || null,
+                force
+            }
+            if (editing) {
+                const res = await fetch(`/api/sla-amar-cuidar/${editing}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                if (!res.ok) {
+                    const data = await res.json()
+                    alert(data.error || 'Erro ao salvar.')
+                    return
+                }
+            } else {
+                const res = await fetch('/api/sla-amar-cuidar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                const data = await res.json()
+                if (data.conflict) {
+                    setConflito(data)
+                    return
+                }
+                if (!res.ok) {
+                    alert(data.error || 'Erro ao salvar.')
+                    return
+                }
+            }
+            setConflito(null)
+            setShowModal(false)
+            fetchRegistros()
+        } catch (err) {
+            alert('Erro ao salvar: ' + err.message)
+        }
+    }
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Tem certeza que deseja excluir este registro de SLA?')) return
+        try {
+            await fetch(`/api/sla-amar-cuidar/${id}`, { method: 'DELETE' })
+            fetchRegistros()
+        } catch (err) {
+            alert('Erro ao excluir: ' + err.message)
+        }
+    }
+
+    const filtered = registros.filter(r => {
+        if (filtro === 'vigentes' && r.data_fim) return false
+        if (filtro === 'historico' && !r.data_fim) return false
+        if (search) {
+            const s = search.toLowerCase()
+            return r.tema.toLowerCase().includes(s) || r.grau_risco.toLowerCase().includes(s)
+        }
+        return true
+    })
+
+    return (
+        <>
+            <div className="admin-content-header">
+                <h1><HeartPulse size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} /> SLA Amar & Cuidar</h1>
+                <button className="btn btn-primary" onClick={openCreate}>
+                    <Plus size={16} /> Novo SLA
+                </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-1)', background: 'var(--color-gray-100)', borderRadius: 'var(--radius-lg)', padding: 2 }}>
+                    {[
+                        { id: 'vigentes', label: 'Vigentes' },
+                        { id: 'historico', label: 'Historico' },
+                        { id: 'todos', label: 'Todos' }
+                    ].map(f => (
+                        <button
+                            key={f.id}
+                            className={`btn btn-sm ${filtro === f.id ? 'btn-primary' : 'btn-ghost'}`}
+                            onClick={() => setFiltro(f.id)}
+                            style={{ borderRadius: 'var(--radius-md)' }}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
+                <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+                    <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-gray-400)' }} />
+                    <input
+                        className="form-input"
+                        placeholder="Buscar por tema ou grau de risco..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        style={{ paddingLeft: 36 }}
+                    />
+                </div>
+            </div>
+
+            <div className="table-container">
+                <table className="table">
+                    <thead>
+                        <tr>
+                            <th>Tema</th>
+                            <th>Grau de Risco</th>
+                            <th>SLA (dias)</th>
+                            <th>Data Inicio</th>
+                            <th>Data Fim</th>
+                            <th>Status</th>
+                            <th>Cadastrado por</th>
+                            <th>Modificado por</th>
+                            <th>Acoes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filtered.map(reg => (
+                            <tr key={reg.id}>
+                                <td><strong>{reg.tema}</strong></td>
+                                <td>{reg.grau_risco}</td>
+                                <td style={{ textAlign: 'center' }}>{reg.sla_dias}</td>
+                                <td>{reg.data_inicio ? new Date(reg.data_inicio).toLocaleDateString('pt-BR') : '-'}</td>
+                                <td>{reg.data_fim ? new Date(reg.data_fim).toLocaleDateString('pt-BR') : '-'}</td>
+                                <td>
+                                    <span className={`badge ${reg.data_fim ? 'badge-error' : 'badge-success'}`}>
+                                        {reg.data_fim ? 'Encerrado' : 'Vigente'}
+                                    </span>
+                                </td>
+                                <td style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>
+                                    {reg.usuario_nome || '-'}
+                                </td>
+                                <td style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>
+                                    {reg.modificado_por_nome || '-'}
+                                </td>
+                                <td>
+                                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                                        <button className="btn btn-ghost btn-sm" onClick={() => openEdit(reg)} title="Editar">
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(reg.id)} title="Excluir" style={{ color: 'var(--color-error)' }}>
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                        {filtered.length === 0 && (
+                            <tr>
+                                <td colSpan={9} style={{ textAlign: 'center', color: 'var(--color-gray-400)', padding: 'var(--space-8)' }}>
+                                    {filtro === 'vigentes' ? 'Nenhum SLA vigente cadastrado.' : filtro === 'historico' ? 'Nenhum registro no historico.' : 'Nenhum registro encontrado.'}
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {showModal && (
+                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+                        <div className="modal-header">
+                            <h2>{editing ? 'Editar SLA' : 'Novo SLA'}</h2>
+                            <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label className="form-label">Tema *</label>
+                                <input
+                                    className="form-input"
+                                    value={form.tema}
+                                    onChange={e => setForm({ ...form, tema: e.target.value })}
+                                    placeholder="Ex: Consulta, Exame, Cirurgia..."
+                                />
+                            </div>
+                            <div className="modal-row">
+                                <div className="form-group">
+                                    <label className="form-label">Grau de Risco *</label>
+                                    <input
+                                        className="form-input"
+                                        value={form.grau_risco}
+                                        onChange={e => setForm({ ...form, grau_risco: e.target.value })}
+                                        placeholder="Ex: Baixo, Medio, Alto, Urgente"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">SLA (dias) *</label>
+                                    <input
+                                        className="form-input"
+                                        type="number"
+                                        min="1"
+                                        value={form.sla_dias}
+                                        onChange={e => setForm({ ...form, sla_dias: e.target.value })}
+                                        placeholder="Ex: 30"
+                                    />
+                                </div>
+                            </div>
+                            <div className="modal-row">
+                                <div className="form-group">
+                                    <label className="form-label">Data Inicio *</label>
+                                    <input
+                                        className="form-input"
+                                        type="date"
+                                        value={form.data_inicio}
+                                        onChange={e => setForm({ ...form, data_inicio: e.target.value })}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Data Fim</label>
+                                    <input
+                                        className="form-input"
+                                        type="date"
+                                        value={form.data_fim}
+                                        onChange={e => setForm({ ...form, data_fim: e.target.value })}
+                                    />
+                                    <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)' }}>
+                                        Deixe em branco para SLA vigente
+                                    </span>
+                                </div>
+                            </div>
+                            {conflito && (
+                                <div style={{
+                                    background: '#FFF3CD',
+                                    border: '1px solid #FFCA28',
+                                    borderRadius: 'var(--radius-lg)',
+                                    padding: 'var(--space-4)',
+                                    marginTop: 'var(--space-2)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                                        <AlertCircle size={20} style={{ color: '#E65100', flexShrink: 0, marginTop: 2 }} />
+                                        <div>
+                                            <p style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: '#E65100', marginBottom: 'var(--space-2)' }}>
+                                                SLA vigente encontrado
+                                            </p>
+                                            <p style={{ fontSize: 'var(--font-size-sm)', color: '#5D4037', marginBottom: 'var(--space-3)' }}>
+                                                {conflito.message}
+                                            </p>
+                                            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                                                <button
+                                                    className="btn btn-sm"
+                                                    style={{ background: '#E65100', color: '#fff', border: 'none' }}
+                                                    onClick={() => handleSave(true)}
+                                                >
+                                                    Encerrar vigente e criar novo
+                                                </button>
+                                                <button
+                                                    className="btn btn-ghost btn-sm"
+                                                    onClick={() => setConflito(null)}
+                                                >
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => { setShowModal(false); setConflito(null) }}>Cancelar</button>
+                            <button className="btn btn-primary" onClick={() => handleSave()}>
+                                <Save size={16} /> Salvar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     )
 }

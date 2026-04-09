@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import Header from '../components/Header'
 import {
-    Search, Filter, Star, Clock, BarChart3, ExternalLink, LayoutGrid
+    Search, Filter, Star, Clock, BarChart3, ExternalLink, LayoutGrid, HeartPulse
 } from 'lucide-react'
 
 export default function Dashboards() {
@@ -109,13 +109,7 @@ export default function Dashboards() {
 
                     {/* Grid */}
                     <div className="dashboards-grid">
-                        {filtered.length === 0 ? (
-                            <div className="dashboards-empty">
-                                <LayoutGrid size={64} />
-                                <p>Nenhum dashboard encontrado.</p>
-                            </div>
-                        ) : (
-                            filtered.map((dash, idx) => (
+                        {filtered.map((dash, idx) => (
                                 <div
                                     key={dash.id}
                                     className={`card dashboard-card animate-fade-in-up animate-delay-${Math.min(idx + 1, 5)}`}
@@ -153,6 +147,11 @@ export default function Dashboards() {
                                                     <ExternalLink size={14} />
                                                     Abrir
                                                 </a>
+                                            ) : dash.type === 'internal' ? (
+                                                <Link to={dash.url} className="btn btn-primary btn-sm">
+                                                    <ExternalLink size={14} />
+                                                    Abrir
+                                                </Link>
                                             ) : (
                                                 <Link to={`/dashboards/${dash.id}`} className="btn btn-primary btn-sm">
                                                     <ExternalLink size={14} />
@@ -163,7 +162,7 @@ export default function Dashboards() {
                                     </div>
                                 </div>
                             ))
-                        )}
+                        }
                     </div>
                 </div>
             </div>

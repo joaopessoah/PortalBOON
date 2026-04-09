@@ -8,6 +8,7 @@ import Dashboards from './pages/Dashboards'
 import DashboardView from './pages/DashboardView'
 import Admin from './pages/Admin'
 import Ativacoes from './pages/Ativacoes'
+import SlaDashboard from './pages/SlaDashboard'
 
 export default function App() {
     return (
@@ -41,6 +42,15 @@ export default function App() {
                             element={
                                 <ProtectedRoute authOnly>
                                     <Ativacoes />
+                                </ProtectedRoute>
+                            }
+                        />
+
+                        <Route
+                            path="/sla-amar-cuidar"
+                            element={
+                                <ProtectedRoute authOnly>
+                                    <SlaDashboard />
                                 </ProtectedRoute>
                             }
                         />

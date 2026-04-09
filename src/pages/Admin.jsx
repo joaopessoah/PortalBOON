@@ -1814,7 +1814,7 @@ function AdminSlaAmarCuidar() {
     const [filtro, setFiltro] = useState('vigentes')
     const [search, setSearch] = useState('')
     const [conflito, setConflito] = useState(null)
-    const emptyForm = { tema: '', grau_risco: '', sla_dias: '', data_inicio: new Date().toISOString().split('T')[0], data_fim: '' }
+    const emptyForm = { tema: '', grau_risco: '', sla_dias: '', data_inicio: new Date().toISOString().split('T')[0], data_fim: '', visivel: true }
     const [form, setForm] = useState(emptyForm)
 
     const fetchRegistros = async () => {
@@ -1843,7 +1843,8 @@ function AdminSlaAmarCuidar() {
             grau_risco: reg.grau_risco,
             sla_dias: reg.sla_dias,
             data_inicio: reg.data_inicio?.split('T')[0] || '',
-            data_fim: reg.data_fim?.split('T')[0] || ''
+            data_fim: reg.data_fim?.split('T')[0] || '',
+            visivel: reg.visivel !== false
         })
         setConflito(null)
         setShowModal(true)
@@ -1863,6 +1864,7 @@ function AdminSlaAmarCuidar() {
                 data_fim: form.data_fim || null,
                 usuario_id: user?.id || null,
                 usuario_nome: user?.name || null,
+                visivel: form.visivel,
                 force
             }
             if (editing) {
@@ -1969,6 +1971,7 @@ function AdminSlaAmarCuidar() {
                             <th>Data Fim</th>
                             <th>Status</th>
                             <th>Cadastrado por</th>
+                            <th>Cliente</th>
                             <th>Modificado por</th>
                             <th>Acoes</th>
                         </tr>
@@ -1990,6 +1993,9 @@ function AdminSlaAmarCuidar() {
                                     {reg.usuario_nome || '-'}
                                 </td>
                                 <td style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>
+                                    {reg.visivel !== false ? 'Sim' : 'Não'}
+                                </td>
+                                <td style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>
                                     {reg.modificado_por_nome || '-'}
                                 </td>
                                 <td>
@@ -2006,7 +2012,7 @@ function AdminSlaAmarCuidar() {
                         ))}
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={9} style={{ textAlign: 'center', color: 'var(--color-gray-400)', padding: 'var(--space-8)' }}>
+                                <td colSpan={10} style={{ textAlign: 'center', color: 'var(--color-gray-400)', padding: 'var(--space-8)' }}>
                                     {filtro === 'vigentes' ? 'Nenhum SLA vigente cadastrado.' : filtro === 'historico' ? 'Nenhum registro no historico.' : 'Nenhum registro encontrado.'}
                                 </td>
                             </tr>
@@ -2079,6 +2085,16 @@ function AdminSlaAmarCuidar() {
                                     </span>
                                 </div>
                             </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontSize: 'var(--font-size-sm)', marginTop: 'var(--space-2)' }}>
+                                <div
+                                    className={`toggle ${form.visivel ? 'active' : ''}`}
+                                    onClick={() => setForm({ ...form, visivel: !form.visivel })}
+                                />
+                                Mostrar este SLA para a versão do cliente?
+                            </label>
+                            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)' }}>
+                                Se desativado, os atendimentos com este grau de risco não aparecerão no dashboard.
+                            </span>
                             {conflito && (
                                 <div style={{
                                     background: '#FFF3CD',

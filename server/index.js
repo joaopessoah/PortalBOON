@@ -1044,7 +1044,7 @@ app.get('/api/sla-amar-cuidar', async (req, res) => {
 
 app.post('/api/sla-amar-cuidar', async (req, res) => {
     try {
-        const { tema, grau_risco, sla_dias, data_inicio, force, usuario_id, usuario_nome } = req.body
+        const { tema, grau_risco, sla_dias, data_inicio, force, usuario_id, usuario_nome, visivel } = req.body
         if (!tema || !grau_risco || !sla_dias || !data_inicio) {
             return res.status(400).json({ error: 'Todos os campos são obrigatórios.' })
         }
@@ -1070,9 +1070,9 @@ app.post('/api/sla-amar-cuidar', async (req, res) => {
             )
         }
         const result = await dbPool.query(
-            `INSERT INTO portal_boon.sla_amar_cuidar (tema, grau_risco, sla_dias, data_inicio, data_fim, usuario_id, usuario_nome)
-             VALUES ($1, $2, $3, $4, NULL, $5, $6) RETURNING *`,
-            [tema.trim(), grau_risco.trim(), sla_dias, data_inicio, usuario_id || null, usuario_nome || null]
+            `INSERT INTO portal_boon.sla_amar_cuidar (tema, grau_risco, sla_dias, data_inicio, data_fim, usuario_id, usuario_nome, visivel)
+             VALUES ($1, $2, $3, $4, NULL, $5, $6, $7) RETURNING *`,
+            [tema.trim(), grau_risco.trim(), sla_dias, data_inicio, usuario_id || null, usuario_nome || null, visivel !== false]
         )
         res.json({ success: true, sla: result.rows[0] })
     } catch (err) {
@@ -1083,11 +1083,11 @@ app.post('/api/sla-amar-cuidar', async (req, res) => {
 app.put('/api/sla-amar-cuidar/:id', async (req, res) => {
     try {
         const { id } = req.params
-        const { tema, grau_risco, sla_dias, data_inicio, data_fim, usuario_id, usuario_nome } = req.body
+        const { tema, grau_risco, sla_dias, data_inicio, data_fim, usuario_id, usuario_nome, visivel } = req.body
         const result = await dbPool.query(
-            `UPDATE portal_boon.sla_amar_cuidar SET tema=$1, grau_risco=$2, sla_dias=$3, data_inicio=$4, data_fim=$5, modificado_por_id=$6, modificado_por_nome=$7, updated_at=NOW()
-             WHERE id=$8 RETURNING *`,
-            [tema, grau_risco, sla_dias, data_inicio, data_fim || null, usuario_id || null, usuario_nome || null, id]
+            `UPDATE portal_boon.sla_amar_cuidar SET tema=$1, grau_risco=$2, sla_dias=$3, data_inicio=$4, data_fim=$5, modificado_por_id=$6, modificado_por_nome=$7, visivel=$8, updated_at=NOW()
+             WHERE id=$9 RETURNING *`,
+            [tema, grau_risco, sla_dias, data_inicio, data_fim || null, usuario_id || null, usuario_nome || null, visivel !== false, id]
         )
         if (result.rows.length === 0) return res.status(404).json({ error: 'Registro não encontrado.' })
         res.json({ success: true, sla: result.rows[0] })

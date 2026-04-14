@@ -733,6 +733,71 @@ app.get('/api/ativacoes', async (req, res) => {
     }
 })
 
+// ======================== ENDPOINT: Exportar Ativações (todos os registros filtrados) ========================
+app.get('/api/ativacoes/export', async (req, res) => {
+    try {
+        const { estipulante, subEstipulante, ativo, titular, dataAtivacao, grauParentesco } = req.query;
+
+        let query = `
+            SELECT
+                "NomeEstipulante",
+                "CNPJEstipulante",
+                "NomeSubestipulante",
+                "GrauParentesco",
+                "NomeCompleto",
+                "NomeTitular",
+                "CPF",
+                "CPFTitular",
+                "Contato",
+                "AtivoBotmaker",
+                "DataCriacaoBotmaker"
+            FROM portal_boon.ativacoes
+            WHERE 1=1
+        `;
+        const values = [];
+        let paramIndex = 1;
+
+        if (estipulante) {
+            query += ` AND LOWER("NomeEstipulante") = LOWER($${paramIndex})`;
+            values.push(estipulante);
+            paramIndex++;
+        }
+        if (subEstipulante) {
+            query += ` AND LOWER("NomeSubestipulante") = LOWER($${paramIndex})`;
+            values.push(subEstipulante);
+            paramIndex++;
+        }
+        if (ativo !== undefined && ativo !== '') {
+            query += ` AND CAST("AtivoBotmaker" AS TEXT) ILIKE $${paramIndex}`;
+            values.push(`%${ativo}%`);
+            paramIndex++;
+        }
+        if (titular) {
+            query += ` AND "NomeTitular" ILIKE $${paramIndex}`;
+            values.push(`%${titular}%`);
+            paramIndex++;
+        }
+        if (dataAtivacao) {
+            query += ` AND TO_DATE("DataCriacaoBotmaker", 'DD-MM-YYYY HH24:MI:SS') >= $${paramIndex}`;
+            values.push(dataAtivacao);
+            paramIndex++;
+        }
+        if (grauParentesco) {
+            query += ` AND "GrauParentesco" ILIKE $${paramIndex}`;
+            values.push(`%${grauParentesco}%`);
+            paramIndex++;
+        }
+
+        query += ` ORDER BY "DataCriacaoBotmaker" DESC NULLS LAST, "NomeCompleto" ASC`;
+
+        const result = await dbPool.query(query, values);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Export error:', error);
+        res.status(500).json({ error: 'Erro ao exportar ativações' });
+    }
+})
+
 // ======================== ENDPOINT: Atualizar Ativações (Sync Python) ========================
 app.post('/api/ativacoes/sync', async (req, res) => {
     try {

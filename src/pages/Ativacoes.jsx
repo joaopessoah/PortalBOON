@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import * as XLSX from 'xlsx'
 import Header from '../components/Header'
 import { Search, Filter, Loader2, RefreshCw, Download } from 'lucide-react'
 
@@ -162,50 +161,49 @@ export default function Ativacoes() {
         else fetchAtivacoes(1)
     }
 
-    const handleExportPDF = () => {
-        const doc = new jsPDF('landscape');
-        doc.text('Relatório de Ativações Boon', 14, 15);
+    const [exporting, setExporting] = useState(false)
 
-        const tableColumn = [
-            "Estipulante",
-            "CNPJ Estipulante",
-            "SubEstipulante",
-            "Grau Parentesco",
-            "Nome Completo",
-            "Titular",
-            "Contato",
-            "Ativo?",
-            "Data Ativação"
-        ];
-        const tableRows = [];
+    const handleExportExcel = async () => {
+        setExporting(true)
+        try {
+            const queryParams = new URLSearchParams()
+            if (filters.estipulante) queryParams.append('estipulante', filters.estipulante)
+            if (filters.subEstipulante) queryParams.append('subEstipulante', filters.subEstipulante)
+            if (filters.titular) queryParams.append('titular', filters.titular)
+            if (filters.ativo) queryParams.append('ativo', filters.ativo)
+            if (filters.dataAtivacao) queryParams.append('dataAtivacao', filters.dataAtivacao)
+            if (filters.grauParentesco) queryParams.append('grauParentesco', filters.grauParentesco)
 
-        ativacoes.forEach(item => {
-            const dataAtivacao = item.DataCriacaoBotmaker
-                ? item.DataCriacaoBotmaker.substring(0, 10).split('-').join('/')
-                : '';
+            const response = await fetch(`/api/ativacoes/export?${queryParams.toString()}`)
+            if (!response.ok) throw new Error('Erro ao exportar dados')
+            const data = await response.json()
 
-            const rowData = [
-                item.NomeEstipulante || '',
-                item.CNPJEstipulante || '',
-                item.NomeSubestipulante || '',
-                item.GrauParentesco || '',
-                item.NomeCompleto || '',
-                item.NomeTitular || '',
-                item.Contato || '',
-                item.AtivoBotmaker || '',
-                dataAtivacao
-            ];
-            tableRows.push(rowData);
-        });
+            const rows = data.map(item => ({
+                'Estipulante': item.NomeEstipulante || '',
+                'CNPJ Estipulante': item.CNPJEstipulante || '',
+                'SubEstipulante': item.NomeSubestipulante || '',
+                'Grau Parentesco': item.GrauParentesco || '',
+                'Nome Completo': item.NomeCompleto || '',
+                'Titular': item.NomeTitular || '',
+                'CPF': item.CPF || '',
+                'CPF Titular': item.CPFTitular || '',
+                'Contato': item.Contato || '',
+                'Ativo?': item.AtivoBotmaker || '',
+                'Data Ativação': item.DataCriacaoBotmaker
+                    ? item.DataCriacaoBotmaker.substring(0, 10).split('-').join('/')
+                    : ''
+            }))
 
-        doc.autoTable({
-            head: [tableColumn],
-            body: tableRows,
-            startY: 20,
-            styles: { fontSize: 8 }
-        });
-
-        doc.save('ativacoes_boon.pdf');
+            const ws = XLSX.utils.json_to_sheet(rows)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Ativações')
+            XLSX.writeFile(wb, 'ativacoes_boon.xlsx')
+        } catch (err) {
+            console.error(err)
+            alert('Erro ao exportar: ' + err.message)
+        } finally {
+            setExporting(false)
+        }
     }
 
     const pctAtivos = totalBeneficiarios > 0 ? Math.round((beneficiariosAtivos / totalBeneficiarios) * 100) : 0;
@@ -223,13 +221,14 @@ export default function Ativacoes() {
                         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                                 <button
-                                    onClick={handleExportPDF}
+                                    onClick={handleExportExcel}
                                     className="btn"
+                                    disabled={exporting}
                                     style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1' }}
-                                    title="Exportar para PDF"
+                                    title="Exportar para Excel"
                                 >
-                                    <Download size={18} />
-                                    Exportar PDF
+                                    {exporting ? <Loader2 size={18} className="spin" /> : <Download size={18} />}
+                                    {exporting ? 'Exportando...' : 'Exportar Excel'}
                                 </button>
                                 <button
                                     onClick={handleSync}

@@ -587,13 +587,13 @@ app.get('/api/ativacoes/opcoes', async (req, res) => {
             let paramIndex = 1;
 
             if (estipulante && columnName !== 'NomeEstipulante') {
-                query += ` AND "NomeEstipulante" ILIKE $${paramIndex}`;
-                values.push(`%${estipulante}%`);
+                query += ` AND LOWER("NomeEstipulante") = LOWER($${paramIndex})`;
+                values.push(estipulante);
                 paramIndex++;
             }
             if (subEstipulante && columnName !== 'NomeSubestipulante') {
-                query += ` AND "NomeSubestipulante" ILIKE $${paramIndex}`;
-                values.push(`%${subEstipulante}%`);
+                query += ` AND LOWER("NomeSubestipulante") = LOWER($${paramIndex})`;
+                values.push(subEstipulante);
                 paramIndex++;
             }
             if (ativo !== undefined && ativo !== '') {
@@ -676,13 +676,13 @@ app.get('/api/ativacoes', async (req, res) => {
         let paramIndex = 1;
 
         if (estipulante) {
-            query += ` AND "NomeEstipulante" ILIKE $${paramIndex}`;
-            values.push(`%${estipulante}%`);
+            query += ` AND LOWER("NomeEstipulante") = LOWER($${paramIndex})`;
+            values.push(estipulante);
             paramIndex++;
         }
         if (subEstipulante) {
-            query += ` AND "NomeSubestipulante" ILIKE $${paramIndex}`;
-            values.push(`%${subEstipulante}%`);
+            query += ` AND LOWER("NomeSubestipulante") = LOWER($${paramIndex})`;
+            values.push(subEstipulante);
             paramIndex++;
         }
         if (ativo !== undefined && ativo !== '') {

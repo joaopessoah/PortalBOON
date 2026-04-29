@@ -844,7 +844,8 @@ const jobStatus = {
     botmaker_full: { running: false, lastRun: null, lastResult: null, output: '' },
     botmaker_3dias: { running: false, lastRun: null, lastResult: null, output: '' },
     moderna_atendimentos: { running: false, lastRun: null, lastResult: null, output: '' },
-    moderna_atendimentos_full: { running: false, lastRun: null, lastResult: null, output: '' }
+    moderna_atendimentos_full: { running: false, lastRun: null, lastResult: null, output: '' },
+    nps_full: { running: false, lastRun: null, lastResult: null, output: '' }
 }
 
 // Carregar último status salvo
@@ -1817,6 +1818,143 @@ app.delete('/api/feriados/:id', async (req, res) => {
     try {
         await dbPool.query('DELETE FROM portal_boon.feriados WHERE id = $1', [req.params.id])
         res.json({ success: true })
+    } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// ======================== NPS ========================
+
+async function npsAllowedEstipulantes(userId) {
+    if (!userId) return { todas: true, lista: [] }
+    const u = await dbPool.query('SELECT role, estipulantes_permitidas FROM portal_boon.users WHERE id = $1', [userId])
+    if (u.rows.length === 0) return { todas: true, lista: [] }
+    if (u.rows[0].role === 'admin') return { todas: true, lista: [] }
+    let lista = []
+    try { lista = JSON.parse(u.rows[0].estipulantes_permitidas || '[]') } catch { lista = [] }
+    if (!Array.isArray(lista) || lista.length === 0) return { todas: true, lista: [] }
+    return { todas: false, lista }
+}
+
+function npsFilters(req, perm) {
+    const conditions = []
+    const params = []
+    if (req.query.data_inicio) { conditions.push(`resposta_time >= $${params.length + 1}::date`); params.push(req.query.data_inicio) }
+    if (req.query.data_fim)    { conditions.push(`resposta_time <= $${params.length + 1}::date + INTERVAL '1 day' - INTERVAL '1 second'`); params.push(req.query.data_fim) }
+    if (req.query.estipulante) {
+        if (!perm.todas && !perm.lista.includes(req.query.estipulante)) {
+            conditions.push('1=0') // bloqueia: usuário pediu estipulante que não pode ver
+        } else {
+            conditions.push(`estipulante_razao = $${params.length + 1}`); params.push(req.query.estipulante)
+        }
+    } else if (!perm.todas) {
+        conditions.push(`estipulante_razao = ANY($${params.length + 1}::text[])`); params.push(perm.lista)
+    }
+    const where = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : ''
+    return { where, params }
+}
+
+app.get('/api/nps', async (req, res) => {
+    try {
+        const perm = await npsAllowedEstipulantes(req.query.user_id)
+        const { where, params } = npsFilters(req, perm)
+        const t = 'botmaker.nps'
+
+        const kpis = (await dbPool.query(`
+            SELECT
+                COUNT(*)::int                                              AS total,
+                COUNT(*) FILTER (WHERE categoria='promotor')::int          AS promotores,
+                COUNT(*) FILTER (WHERE categoria='neutro')::int            AS neutros,
+                COUNT(*) FILTER (WHERE categoria='detrator')::int          AS detratores,
+                COUNT(*) FILTER (WHERE estipulante_razao IS NULL)::int     AS sem_estipulante,
+                ROUND(AVG(nota)::numeric, 2)                               AS nota_media,
+                ROUND(
+                    (COUNT(*) FILTER (WHERE categoria='promotor')::numeric
+                   - COUNT(*) FILTER (WHERE categoria='detrator')::numeric)
+                   / NULLIF(COUNT(*),0) * 100, 1
+                ) AS score
+            FROM ${t}${where}
+        `, params)).rows[0]
+
+        const distribuicao = (await dbPool.query(`
+            SELECT n.nota, COALESCE(c.qtd, 0)::int AS qtd
+            FROM generate_series(0, 10) AS n(nota)
+            LEFT JOIN (
+                SELECT nota, COUNT(*)::int AS qtd FROM ${t}${where} GROUP BY nota
+            ) c ON c.nota = n.nota
+            ORDER BY n.nota
+        `, params)).rows
+
+        const evolucao = (await dbPool.query(`
+            SELECT TO_CHAR(resposta_time, 'YYYY-MM') AS mes,
+                   COUNT(*)::int AS total,
+                   COUNT(*) FILTER (WHERE categoria='promotor')::int AS promotores,
+                   COUNT(*) FILTER (WHERE categoria='neutro')::int   AS neutros,
+                   COUNT(*) FILTER (WHERE categoria='detrator')::int AS detratores,
+                   ROUND(
+                       (COUNT(*) FILTER (WHERE categoria='promotor')::numeric
+                      - COUNT(*) FILTER (WHERE categoria='detrator')::numeric)
+                      / NULLIF(COUNT(*),0) * 100, 1
+                   ) AS score
+            FROM ${t}${where}
+            GROUP BY mes ORDER BY mes
+        `, params)).rows
+
+        const porEstipulante = (await dbPool.query(`
+            SELECT estipulante_razao,
+                   COUNT(*)::int AS total,
+                   ROUND(AVG(nota)::numeric, 2) AS nota_media,
+                   COUNT(*) FILTER (WHERE categoria='promotor')::int AS promotores,
+                   COUNT(*) FILTER (WHERE categoria='neutro')::int   AS neutros,
+                   COUNT(*) FILTER (WHERE categoria='detrator')::int AS detratores,
+                   ROUND(
+                       (COUNT(*) FILTER (WHERE categoria='promotor')::numeric
+                      - COUNT(*) FILTER (WHERE categoria='detrator')::numeric)
+                      / NULLIF(COUNT(*),0) * 100, 1
+                   ) AS score
+            FROM ${t}${where ? where + ' AND' : ' WHERE'} estipulante_razao IS NOT NULL
+            GROUP BY estipulante_razao
+            ORDER BY total DESC
+            LIMIT 15
+        `, params)).rows
+
+        const ultimas = (await dbPool.query(`
+            SELECT cpf_formatted, nota, categoria, estipulante_razao, resposta_time
+            FROM ${t}${where}
+            ORDER BY resposta_time DESC
+            LIMIT 100
+        `, params)).rows
+
+        res.json({
+            kpis: {
+                total: Number(kpis.total),
+                promotores: Number(kpis.promotores),
+                neutros: Number(kpis.neutros),
+                detratores: Number(kpis.detratores),
+                sem_estipulante: Number(kpis.sem_estipulante),
+                nota_media: kpis.nota_media,
+                score: kpis.score
+            },
+            distribuicao,
+            evolucao_mensal: evolucao,
+            por_estipulante: porEstipulante,
+            ultimas_respostas: ultimas
+        })
+    } catch (err) {
+        console.error('Erro /api/nps:', err)
+        res.status(500).json({ error: err.message })
+    }
+})
+
+app.get('/api/nps/estipulantes', async (req, res) => {
+    try {
+        const perm = await npsAllowedEstipulantes(req.query.user_id)
+        const rows = await dbPool.query(`
+            SELECT DISTINCT estipulante_razao FROM botmaker.nps
+            WHERE estipulante_razao IS NOT NULL AND estipulante_razao <> ''
+            ORDER BY estipulante_razao
+        `)
+        let lista = rows.rows.map(r => r.estipulante_razao)
+        if (!perm.todas) lista = lista.filter(e => perm.lista.includes(e))
+        res.json(lista)
     } catch (err) { res.status(500).json({ error: err.message }) }
 })
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Header from '../components/Header'
-import { AlertCircle, CheckCircle, Clock, Trophy, ClipboardList, TrendingUp, TrendingDown, Users, Timer, ArrowLeft, Activity, UserX, BarChart3, Zap, Target, Brain, X, CalendarCheck } from 'lucide-react'
+import { AlertCircle, CheckCircle, Clock, Trophy, ClipboardList, TrendingUp, TrendingDown, Users, Timer, ArrowLeft, Activity, UserX, BarChart3, Zap, Target, Brain, X, CalendarCheck, Smile } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -56,11 +56,21 @@ export default function SlaDashboard() {
         const s = p.toString(); return s ? '?'+s : ''
     }
 
+    // Query string específica do NPS (parametriza data_inicio/data_fim, não data_ini/data_fim, e injeta user_id)
+    const qNps = () => {
+        const p = new URLSearchParams()
+        if (f.data_ini) p.set('data_inicio', f.data_ini)
+        if (f.data_fim) p.set('data_fim', f.data_fim)
+        if (f.estipulante) p.set('estipulante', f.estipulante)
+        if (user?.id) p.set('user_id', user.id)
+        const s = p.toString(); return s ? '?'+s : ''
+    }
+
     const load = async () => {
         setLoading(true)
         const qs = q()
         try {
-            const [kpis, porStatus, evolucao, porAssunto, foraPrazo, emAberto, taxaMensal, atKpis, atMes, atMotivo, assuntosVolume, porRisco, rankCríticos, anomalias, previsao, porDiaSemana, faixaEtaria, retencao, utilizacao, previsaoAssunto, assuntoFaixaEtaria, tabelaMensal, jornada] = await Promise.all([
+            const [kpis, porStatus, evolucao, porAssunto, foraPrazo, emAberto, taxaMensal, atKpis, atMes, atMotivo, assuntosVolume, porRisco, rankCríticos, anomalias, previsao, porDiaSemana, faixaEtaria, retencao, utilizacao, previsaoAssunto, assuntoFaixaEtaria, tabelaMensal, jornada, nps] = await Promise.all([
                 fetch('/api/sla-dashboard/kpis'+qs).then(r=>r.json()),
                 fetch('/api/sla-dashboard/por-status'+qs).then(r=>r.json()),
                 fetch('/api/sla-dashboard/evolucao-mensal'+qs).then(r=>r.json()),
@@ -84,6 +94,7 @@ export default function SlaDashboard() {
                 fetch('/api/sla-dashboard/assunto-faixa-etaria'+qs).then(r=>r.json()),
                 fetch('/api/sla-dashboard/tabela-mensal'+qs).then(r=>r.json()),
                 fetch('/api/sla-dashboard/jornada-paciente'+qs).then(r=>r.json()),
+                fetch('/api/nps'+qNps()).then(r=>r.json()).catch(()=>null),
             ])
             // Calcular último mês completo vs média 3 meses
             const mesAtual = new Date().toISOString().slice(0,7)
@@ -93,7 +104,7 @@ export default function SlaDashboard() {
             const media3m = ult3.length > 0 ? Math.round(ult3.reduce((a, r) => a + r.total, 0) / ult3.length) : 0
             const varUltMes = ultMes && media3m > 0 ? Math.round((ultMes.total - media3m) / media3m * 1000) / 10 : 0
 
-            setD({ kpis, porStatus, evolucao, porAssunto, foraPrazo, emAberto, taxaMensal, atKpis, atMes, atMotivo, assuntosVolume, porRisco, rankCríticos, anomalias, previsao, ultMes, media3m, varUltMes, porDiaSemana, faixaEtaria, retencao, utilizacao, previsaoAssunto, assuntoFaixaEtaria, tabelaMensal, jornada })
+            setD({ kpis, porStatus, evolucao, porAssunto, foraPrazo, emAberto, taxaMensal, atKpis, atMes, atMotivo, assuntosVolume, porRisco, rankCríticos, anomalias, previsao, ultMes, media3m, varUltMes, porDiaSemana, faixaEtaria, retencao, utilizacao, previsaoAssunto, assuntoFaixaEtaria, tabelaMensal, jornada, nps })
         } catch (err) { console.error(err) }
         setLoading(false)
     }
@@ -448,6 +459,7 @@ export default function SlaDashboard() {
                         {id:'jornada',label:'Jornada do Paciente',icon:Users},
                         {id:'sla',label:'Controle de SLA',icon:Trophy},
                         {id:'assuntos',label:'Assuntos e Análises',icon:BarChart3},
+                        {id:'nps',label:'NPS',icon:Smile},
                         {id:'ia',label:'Análise com IA',icon:Brain},
                     ].map(tab => {
                         const Icon = tab.icon
@@ -851,6 +863,282 @@ export default function SlaDashboard() {
                         </div>
                     </div>
                 </Section>}
+
+                {/* ═══════ NPS ═══════ */}
+                {secao === 'nps' && (() => {
+                    const nps = d.nps
+                    if (!nps || !nps.kpis || !nps.kpis.total) {
+                        return <Section title="NPS — Net Promoter Score">
+                            <div style={{...cs,textAlign:'center',padding:'60px 20px',color:'#bbb'}}>
+                                <Smile size={48} color="#ddd" style={{marginBottom:16}}/>
+                                <p style={{fontSize:13,color:'#888'}}>Sem dados de NPS para o filtro selecionado.</p>
+                            </div>
+                        </Section>
+                    }
+                    const k = nps.kpis
+                    const total = Math.max(k.total, 1)
+                    const pctProm = Math.round(k.promotores / total * 1000) / 10
+                    const pctNeu  = Math.round(k.neutros    / total * 1000) / 10
+                    const pctDet  = Math.round(k.detratores / total * 1000) / 10
+                    const scoreNum = Number(k.score) || 0
+                    const scoreColor = scoreNum >= 75 ? '#16a34a'
+                                       : scoreNum >= 50 ? '#22c55e'
+                                       : scoreNum >= 0 ? '#f59e0b' : '#ef4444'
+                    const zonaLabel = scoreNum >= 75 ? 'Zona de Excelência'
+                                    : scoreNum >= 50 ? 'Zona de Qualidade'
+                                    : scoreNum >= 0  ? 'Zona de Aperfeiçoamento'
+                                    :                  'Zona Crítica'
+                    const maxNota = Math.max(...nps.distribuicao.map(x => x.qtd), 1)
+                    const corNota = (n) => n >= 9 ? '#16a34a' : n >= 7 ? '#f59e0b' : '#ef4444'
+
+                    // Variação vs mês anterior
+                    const evol = nps.evolucao_mensal || []
+                    const lastIdx = evol.length - 1
+                    const ultMes  = lastIdx >= 0 ? evol[lastIdx] : null
+                    const penultMes = lastIdx >= 1 ? evol[lastIdx - 1] : null
+                    const deltaScore = (ultMes && penultMes)
+                        ? Math.round((Number(ultMes.score) - Number(penultMes.score)) * 10) / 10
+                        : null
+
+                    // Gauge: arc semicircular -100 → 100, ponteiro no scoreNum
+                    // Mapeia scoreNum (-100..100) para ângulo (-90..90 graus)
+                    const angle = Math.max(-90, Math.min(90, scoreNum * 0.9))
+                    const rad = (angle - 90) * Math.PI / 180
+                    const cx = 150, cy = 150, r = 110
+                    const ptrX = cx + r * Math.cos(rad)
+                    const ptrY = cy + r * Math.sin(rad)
+
+                    // Benchmark de mercado (NPS médio de saúde corporativa ≈ 40 segundo Bain/SatMetrix)
+                    const benchmark = 40
+                    const vsBenchmark = Math.round((scoreNum - benchmark) * 10) / 10
+
+                    // Período legível
+                    const fmtMes = (s) => fm(s)
+                    const periodoLabel = (evol.length > 0)
+                        ? `${fmtMes(evol[0].mes)} — ${fmtMes(evol[evol.length-1].mes)}`
+                        : 'Sem dados'
+
+                    return <Section title="NPS — Net Promoter Score">
+                        {/* ===== HERO EXECUTIVO ===== */}
+                        <div style={{...cs, padding:'32px 36px', marginBottom:16, position:'relative', overflow:'hidden'}}>
+                            {/* faixa lateral colorida */}
+                            <div style={{position:'absolute',left:0,top:0,bottom:0,width:5,background:`linear-gradient(180deg, ${scoreColor}, ${scoreColor}80)`}}/>
+
+                            <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:32,alignItems:'center'}}>
+                                <div>
+                                    <div style={{fontSize:11,fontWeight:700,color:'#888',textTransform:'uppercase',letterSpacing:'2.5px',marginBottom:14}}>
+                                        Net Promoter Score · {periodoLabel}
+                                    </div>
+                                    <div style={{display:'flex',alignItems:'flex-end',gap:18}}>
+                                        <div style={{fontSize:128,fontWeight:900,color:scoreColor,lineHeight:0.85,letterSpacing:'-5px'}}>
+                                            {k.score ?? '-'}
+                                        </div>
+                                        <div style={{paddingBottom:14}}>
+                                            <div style={{
+                                                fontSize:13,fontWeight:700,color:'#fff',
+                                                padding:'4px 12px',borderRadius:6,
+                                                background:scoreColor,display:'inline-block',
+                                                letterSpacing:'0.5px'
+                                            }}>{zonaLabel.toUpperCase()}</div>
+                                            {deltaScore !== null && (
+                                                <div style={{fontSize:13,color:deltaScore >= 0 ? '#16a34a' : '#dc2626',fontWeight:600,marginTop:8,display:'flex',alignItems:'center',gap:5}}>
+                                                    {deltaScore >= 0 ? <TrendingUp size={15}/> : <TrendingDown size={15}/>}
+                                                    {deltaScore >= 0 ? '+' : ''}{deltaScore} pts vs. mês anterior
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div style={{fontSize:14,color:'#666',marginTop:18,lineHeight:1.5,maxWidth:520}}>
+                                        Baseado em <strong style={{color:'#1a1a2e'}}>{fmt(k.total)}</strong> avaliações de beneficiários,
+                                        com nota média de <strong style={{color:'#1a1a2e'}}>{k.nota_media}/10</strong>.
+                                    </div>
+                                </div>
+
+                                {/* Benchmark + comparação */}
+                                <div style={{
+                                    background:'#fafaf9',
+                                    border:'1px solid #efeae6',
+                                    borderRadius:12,
+                                    padding:'20px 22px'
+                                }}>
+                                    <div style={{fontSize:10,fontWeight:700,color:'#888',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:12}}>
+                                        Comparativo de Mercado
+                                    </div>
+                                    <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:6}}>
+                                        <span style={{fontSize:13,color:'#666'}}>Saúde Corporativa</span>
+                                        <span style={{fontSize:18,fontWeight:700,color:'#444'}}>{benchmark}</span>
+                                    </div>
+                                    <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:14}}>
+                                        <span style={{fontSize:13,color:'#1a1a2e',fontWeight:600}}>Boon Saúde</span>
+                                        <span style={{fontSize:22,fontWeight:800,color:scoreColor}}>{k.score}</span>
+                                    </div>
+                                    <div style={{height:1,background:'#efeae6',margin:'8px 0 14px'}}/>
+                                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                        {vsBenchmark >= 0
+                                            ? <TrendingUp size={20} color="#16a34a"/>
+                                            : <TrendingDown size={20} color="#dc2626"/>}
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:800,color:vsBenchmark >= 0 ? '#16a34a' : '#dc2626',lineHeight:1}}>
+                                                {vsBenchmark >= 0 ? '+' : ''}{vsBenchmark} pts
+                                            </div>
+                                            <div style={{fontSize:11,color:'#888',marginTop:2}}>
+                                                {vsBenchmark >= 0 ? 'acima' : 'abaixo'} da média do setor
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ===== TRINCA EXECUTIVA ===== */}
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14,marginBottom:16}}>
+                            {[
+                                { label:'Promotores', sub:'Notas 9 e 10',  qtd:k.promotores, pct:pctProm, color:'#16a34a', accent:'#86efac' },
+                                { label:'Neutros',    sub:'Notas 7 e 8',   qtd:k.neutros,    pct:pctNeu,  color:'#d97706', accent:'#fcd34d' },
+                                { label:'Detratores', sub:'Notas 0 a 6',   qtd:k.detratores, pct:pctDet,  color:'#dc2626', accent:'#fca5a5' },
+                            ].map(it => (
+                                <div key={it.label} style={{
+                                    ...cs,
+                                    padding:'22px 24px',
+                                    borderTop:`4px solid ${it.color}`,
+                                    position:'relative',
+                                    overflow:'hidden'
+                                }}>
+                                    <div style={{position:'absolute',right:-20,top:-20,width:90,height:90,borderRadius:'50%',background:`${it.color}08`}}/>
+                                    <div style={{position:'relative',zIndex:1}}>
+                                        <div style={{fontSize:11,fontWeight:700,color:'#888',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:4}}>{it.label}</div>
+                                        <div style={{fontSize:11,color:'#bbb',marginBottom:12}}>{it.sub}</div>
+                                        <div style={{display:'flex',alignItems:'baseline',gap:10}}>
+                                            <span style={{fontSize:46,fontWeight:900,color:it.color,lineHeight:1,letterSpacing:'-1.5px'}}>{it.pct.toFixed(1)}<span style={{fontSize:20}}>%</span></span>
+                                            <span style={{fontSize:13,color:'#aaa',fontWeight:600}}>· {fmt(it.qtd)} pessoas</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1.3fr',gap:14,marginBottom:16}}>
+                            {/* Distribuição das notas */}
+                            <div style={cs}>
+                                <div style={ts}><BarChart3 size={14} color="#6B2A8C"/> Distribuição das notas</div>
+                                {(() => {
+                                    const BARS_H = 200 // altura útil da área de barras em px
+                                    return (
+                                        <div style={{display:'flex',alignItems:'flex-end',gap:6,padding:'18px 4px 4px'}}>
+                                            {nps.distribuicao.map(r => {
+                                                const h = Math.max(4, Math.round((r.qtd / maxNota) * BARS_H))
+                                                return (
+                                                    <div key={r.nota} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center'}}>
+                                                        <div style={{fontSize:10,fontWeight:700,color:'#666',marginBottom:4}}>{r.qtd}</div>
+                                                        <div style={{
+                                                            width:'100%',
+                                                            height: h,
+                                                            background: `linear-gradient(180deg, ${corNota(r.nota)}, ${corNota(r.nota)}cc)`,
+                                                            borderRadius:'6px 6px 0 0',
+                                                            boxShadow:`0 -2px 8px ${corNota(r.nota)}40`,
+                                                            transition:'height 0.4s'
+                                                        }}/>
+                                                        <div style={{fontSize:12,fontWeight:700,color:'#444',marginTop:6}}>{r.nota}</div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )
+                                })()}
+                                <div style={{display:'flex',gap:6,marginTop:8}}>
+                                    <div style={{flex:7,height:3,background:'#dc2626',borderRadius:2,opacity:0.7}}/>
+                                    <div style={{flex:2,height:3,background:'#d97706',borderRadius:2,opacity:0.7}}/>
+                                    <div style={{flex:2,height:3,background:'#16a34a',borderRadius:2,opacity:0.7}}/>
+                                </div>
+                                <div style={{display:'flex',gap:6,marginTop:4,fontSize:9,fontWeight:700,color:'#aaa',letterSpacing:'1px',textTransform:'uppercase'}}>
+                                    <span style={{flex:7}}>Detratores</span>
+                                    <span style={{flex:2,textAlign:'center'}}>Neutros</span>
+                                    <span style={{flex:2,textAlign:'right'}}>Promotores</span>
+                                </div>
+                            </div>
+
+                            {/* Evolução mensal — gráfico de linha SVG */}
+                            <div style={cs}>
+                                <div style={ts}><Activity size={14} color="#16a34a"/> Evolução do NPS por mês</div>
+                                {evol.length === 0 ? (
+                                    <div style={{padding:24,textAlign:'center',color:'#bbb',fontSize:12}}>Sem dados</div>
+                                ) : (() => {
+                                    const W = 480, H = 220, pad = { l: 36, r: 16, t: 24, b: 36 }
+                                    const xs = evol.length > 1 ? (W - pad.l - pad.r) / (evol.length - 1) : 0
+                                    const ys = (H - pad.t - pad.b) / 200 // -100..+100
+                                    const xAt = i => pad.l + i * xs
+                                    const yAt = s => pad.t + (100 - Number(s)) * ys
+                                    const linePath = evol.map((m,i) =>
+                                        `${i===0?'M':'L'} ${xAt(i)} ${yAt(m.score)}`).join(' ')
+                                    const areaPath = linePath + ` L ${xAt(evol.length - 1)} ${H - pad.b} L ${xAt(0)} ${H - pad.b} Z`
+                                    return (
+                                        <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{marginTop:6}}>
+                                            <defs>
+                                                <linearGradient id="grad-nps" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%"  stopColor="#16a34a" stopOpacity="0.35"/>
+                                                    <stop offset="100%" stopColor="#16a34a" stopOpacity="0"/>
+                                                </linearGradient>
+                                            </defs>
+                                            {/* grid linhas em 0, 50, 100 */}
+                                            {[100, 50, 0, -50].map(v => (
+                                                <g key={v}>
+                                                    <line x1={pad.l} y1={yAt(v)} x2={W-pad.r} y2={yAt(v)} stroke="#f0f0f0"/>
+                                                    <text x={pad.l-6} y={yAt(v)+3} fontSize="9" textAnchor="end" fill="#aaa">{v}</text>
+                                                </g>
+                                            ))}
+                                            {/* zona de excelência destaque */}
+                                            <line x1={pad.l} y1={yAt(50)} x2={W-pad.r} y2={yAt(50)} stroke="#22c55e" strokeDasharray="3,3" strokeWidth="1" opacity="0.5"/>
+                                            {/* área */}
+                                            <path d={areaPath} fill="url(#grad-nps)"/>
+                                            {/* linha */}
+                                            <path d={linePath} fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinejoin="round"/>
+                                            {/* pontos */}
+                                            {evol.map((m,i) => (
+                                                <g key={m.mes}>
+                                                    <circle cx={xAt(i)} cy={yAt(m.score)} r={4.5} fill="#fff" stroke="#16a34a" strokeWidth="2.5"/>
+                                                    <text x={xAt(i)} y={yAt(m.score) - 12} fontSize="10" fontWeight="700" textAnchor="middle" fill="#16a34a">{m.score}</text>
+                                                    <text x={xAt(i)} y={H - pad.b + 14} fontSize="10" textAnchor="middle" fill="#888">{fm(m.mes)}</text>
+                                                </g>
+                                            ))}
+                                        </svg>
+                                    )
+                                })()}
+                            </div>
+                        </div>
+
+                        {/* Vozes recentes — só promotores e detratores, sem CPF */}
+                        {nps.ultimas_respostas.length > 0 && (
+                            <div style={cs}>
+                                <div style={ts}><Smile size={14} color="#16a34a"/> Avaliações recentes</div>
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))',gap:10,marginTop:10}}>
+                                    {nps.ultimas_respostas.slice(0, 24).map((r,i) => {
+                                        const cor = corNota(r.nota)
+                                        return (
+                                            <div key={i} style={{
+                                                padding:'10px 12px',
+                                                borderRadius:10,
+                                                background:cor+'10',
+                                                border:`1px solid ${cor}25`,
+                                                display:'flex',alignItems:'center',gap:10
+                                            }}>
+                                                <div style={{
+                                                    width:36,height:36,borderRadius:50,
+                                                    background:cor,color:'#fff',
+                                                    display:'flex',alignItems:'center',justifyContent:'center',
+                                                    fontSize:15,fontWeight:800,flexShrink:0
+                                                }}>{r.nota}</div>
+                                                <div style={{minWidth:0,flex:1}}>
+                                                    <div style={{fontSize:11,fontWeight:700,color:cor,textTransform:'capitalize'}}>{r.categoria}</div>
+                                                    <div style={{fontSize:10,color:'#999'}}>{new Date(r.resposta_time).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'})}</div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </Section>
+                })()}
 
                 {/* ═══════ IA ═══════ */}
                 {secao === 'ia' && <Section title="Análise com Inteligência Artificial">

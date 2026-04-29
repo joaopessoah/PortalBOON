@@ -1170,6 +1170,14 @@ function AdminJobs() {
                 import_beneficiarios: { label: 'Beneficiarios (Total)', description: 'Carga completa (~7h)' },
                 import_beneficiarios_alterados: { label: 'Beneficiarios (2 dias)', description: 'Incremental com os últimos 2 dias' }
             }
+        },
+        {
+            id: 'nps',
+            title: 'NPS',
+            color: '#8b5cf6',
+            jobs: {
+                nps_full: { label: 'Materializar respostas NPS', description: 'Cruza pergunta NPS x resposta x CPF x estipulante em botmaker.nps' }
+            }
         }
     ]
 
